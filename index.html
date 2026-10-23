@@ -1,0 +1,285 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#075985">
+  <title>App Mantenimiento Piscinas</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #172033;
+    }
+
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 22px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 3px 12px #00000012;
+    }
+
+    h1 {
+      margin-top: 0;
+      color: #075985;
+      font-size: 24px;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: bold;
+    }
+
+    input, select, textarea, button {
+      width: 100%;
+      margin-top: 7px;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    input, select, textarea {
+      background: #fff;
+    }
+
+    button {
+      margin-top: 20px;
+      border: 0;
+      background: #075985;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      margin-top: 10px;
+      background: #475569;
+    }
+
+    .note {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    #estado {
+      margin-top: 16px;
+      padding: 12px;
+      background: #e0f2fe;
+      border-radius: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    #lista {
+      padding-left: 20px;
+      overflow-wrap: anywhere;
+    }
+
+    .cantidad {
+      inputmode: decimal;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1> Mantenimiento de Piscinas </h1>
+  <p class="note">
+    Prototipo de prueba. Los registros se guardan en este dispositivo.
+    Todavía no se envían a Google Sheets.
+  </p>
+
+  <form id="formulario">
+    <label for="cliente">Cliente</label>
+    <input id="cliente" name="cliente" type="text"
+           autocomplete="off" required>
+
+    <label for="operador">Operador</label>
+    <input id="operador" name="operador" type="text"
+           autocomplete="off" required>
+
+    <label for="tipo">Tipo de visita</label>
+    <select id="tipo" name="tipo" required>
+      <option value="Programada">Programada</option>
+      <option value="No programada">No programada</option>
+    </select>
+
+    <label for="cloro">Cloro (libras)</label>
+    <input class="cantidad" id="cloro" name="cloro"
+           type="text" inputmode="decimal" placeholder="Ej.: 1,5">
+
+    <label for="pastilla">Pastillas (unidades)</label>
+    <input class="cantidad" id="pastilla" name="pastilla"
+           type="text" inputmode="decimal" placeholder="Ej.: 1">
+
+    <label for="floculante">Floculante (cantidad)</label>
+    <input class="cantidad" id="floculante" name="floculante"
+           type="text" inputmode="decimal" placeholder="Ej.: 0,5">
+
+    <label for="sal">Sal (kg)</label>
+    <input class="cantidad" id="sal" name="sal"
+           type="text" inputmode="decimal" placeholder="Ej.: 2,5">
+
+    <label for="novedades">Novedades</label>
+    <textarea id="novedades" name="novedades" rows="3"></textarea>
+
+    <label for="foto">Foto de mantenimiento (opcional)</label>
+    <input id="foto" name="foto" type="file" accept="image/*"
+           capture="environment">
+
+    <button type="submit">Guardar visita en este dispositivo</button>
+  </form>
+
+  <div id="estado" role="status">
+    No hay visitas nuevas guardadas en esta sesión.
+  </div>
+
+  <h2>Visitas guardadas</h2>
+  <p class="note">
+    Esta lista muestra los registros almacenados localmente en este navegador.
+  </p>
+  <ul id="lista"></ul>
+
+  <button type="button" class="secondary" id="exportar">
+    Exportar registros de prueba (JSON)
+  </button>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const CLAVE = "visitasPiscinasPendientes";
+  const formulario = document.getElementById("formulario");
+  const estado = document.getElementById("estado");
+  const lista = document.getElementById("lista");
+
+  function leerRegistros() {
+    try {
+      const datos = JSON.parse(localStorage.getItem(CLAVE) || "[]");
+      return Array.isArray(datos) ? datos : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function mostrarRegistros() {
+    lista.replaceChildren();
+    const registros = leerRegistros();
+
+    if (registros.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "Todavía no hay visitas guardadas.";
+      lista.appendChild(li);
+      return;
+    }
+
+    registros.slice().reverse().forEach(registro => {
+      const li = document.createElement("li");
+      const fecha = new Date(registro.fecha).toLocaleString("es-EC");
+      li.textContent =
+        `${registro.cliente} — ${registro.tipo} — ${fecha} — Pendiente de sincronización`;
+      lista.appendChild(li);
+    });
+  }
+
+  function validarCantidad(campo) {
+    const valor = campo.value.trim();
+
+    if (valor === "") return true;
+
+    if (!/^\d+(,\d+)?$/.test(valor)) {
+      campo.setCustomValidity(
+        "Usa números y coma decimal. Ejemplo: 1,5. No uses punto."
+      );
+      campo.reportValidity();
+      campo.setCustomValidity("");
+      campo.focus();
+      return false;
+    }
+
+    return true;
+  }
+
+  document.querySelectorAll(".cantidad").forEach(campo => {
+    campo.addEventListener("input", () => {
+      campo.setCustomValidity("");
+    });
+    campo.addEventListener("blur", () => {
+      validarCantidad(campo);
+    });
+  });
+
+  formulario.addEventListener("submit", event => {
+    event.preventDefault();
+
+    for (const campo of document.querySelectorAll(".cantidad")) {
+      if (!validarCantidad(campo)) return;
+    }
+
+    const foto = document.getElementById("foto").files[0];
+
+    if (foto) {
+      estado.textContent =
+        "Esta versión de prueba no guarda fotografías todavía. " +
+        "Retira la foto y vuelve a guardar el registro.";
+      return;
+    }
+
+    const registro = {
+      id: (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
+      fecha: new Date().toISOString(),
+      cliente: document.getElementById("cliente").value.trim(),
+      operador: document.getElementById("operador").value.trim(),
+      tipo: document.getElementById("tipo").value,
+      cloro: document.getElementById("cloro").value.trim(),
+      pastilla: document.getElementById("pastilla").value.trim(),
+      floculante: document.getElementById("floculante").value.trim(),
+      sal: document.getElementById("sal").value.trim(),
+      novedades: document.getElementById("novedades").value.trim(),
+      estado: "Pendiente de sincronización"
+    };
+
+    try {
+      const registros = leerRegistros();
+      registros.push(registro);
+      localStorage.setItem(CLAVE, JSON.stringify(registros));
+      estado.textContent =
+        "Visita guardada en este navegador. Aún no se ha enviado al servidor.";
+      formulario.reset();
+      mostrarRegistros();
+    } catch (error) {
+      estado.textContent =
+        "No se pudo guardar. El almacenamiento del navegador puede estar lleno.";
+    }
+  });
+
+  document.getElementById("exportar").addEventListener("click", () => {
+    const registros = leerRegistros();
+    const archivo = new Blob(
+      [JSON.stringify(registros, null, 2)],
+      { type: "application/json;charset=utf-8" }
+    );
+    const url = URL.createObjectURL(archivo);
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = "visitas-piscinas-prueba.json";
+    enlace.click();
+    URL.revokeObjectURL(url);
+  });
+
+  mostrarRegistros();
+})();
+</script>
+</body>
+</html>
