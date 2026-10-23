@@ -47,9 +47,7 @@
       font: inherit;
     }
 
-    input, select, textarea {
-      background: #fff;
-    }
+    input, select, textarea { background: #fff; }
 
     button {
       margin-top: 20px;
@@ -60,16 +58,23 @@
       cursor: pointer;
     }
 
-    button.secondary {
-      margin-top: 10px;
-      background: #475569;
-    }
+    button.secondary { background: #475569; }
 
     .note {
       font-size: 14px;
       color: #475569;
       line-height: 1.5;
     }
+
+    .error {
+      display: none;
+      margin-top: 5px;
+      color: #b91c1c;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .error.visible { display: block; }
 
     #estado {
       margin-top: 16px;
@@ -83,17 +88,14 @@
       padding-left: 20px;
       overflow-wrap: anywhere;
     }
-
-    .cantidad {
-      inputmode: decimal;
-    }
   </style>
 </head>
 <body>
 <main>
-  <h1> Mantenimiento de Piscinas </h1>
+  <h1>Mantenimiento de Piscinas</h1>
+
   <p class="note">
-    Prototipo de prueba. Los registros se guardan en este dispositivo.
+    Prototipo de prueba. Los registros se guardan en este navegador.
     Todavía no se envían a Google Sheets.
   </p>
 
@@ -115,18 +117,22 @@
     <label for="cloro">Cloro (libras)</label>
     <input class="cantidad" id="cloro" name="cloro"
            type="text" inputmode="decimal" placeholder="Ej.: 1,5">
+    <div class="error" id="error-cloro" aria-live="polite"></div>
 
     <label for="pastilla">Pastillas (unidades)</label>
     <input class="cantidad" id="pastilla" name="pastilla"
            type="text" inputmode="decimal" placeholder="Ej.: 1">
+    <div class="error" id="error-pastilla" aria-live="polite"></div>
 
     <label for="floculante">Floculante (cantidad)</label>
     <input class="cantidad" id="floculante" name="floculante"
            type="text" inputmode="decimal" placeholder="Ej.: 0,5">
+    <div class="error" id="error-floculante" aria-live="polite"></div>
 
     <label for="sal">Sal (kg)</label>
     <input class="cantidad" id="sal" name="sal"
            type="text" inputmode="decimal" placeholder="Ej.: 2,5">
+    <div class="error" id="error-sal" aria-live="polite"></div>
 
     <label for="novedades">Novedades</label>
     <textarea id="novedades" name="novedades" rows="3"></textarea>
@@ -139,12 +145,12 @@
   </form>
 
   <div id="estado" role="status">
-    No hay visitas nuevas guardadas en esta sesión.
+    Todavía no hay visitas guardadas en esta sesión.
   </div>
 
   <h2>Visitas guardadas</h2>
   <p class="note">
-    Esta lista muestra los registros almacenados localmente en este navegador.
+    Registros almacenados localmente en este navegador.
   </p>
   <ul id="lista"></ul>
 
@@ -161,6 +167,9 @@
   const formulario = document.getElementById("formulario");
   const estado = document.getElementById("estado");
   const lista = document.getElementById("lista");
+  const camposCantidad = Array.from(
+    document.querySelectorAll(".cantidad")
+  );
 
   function leerRegistros() {
     try {
@@ -186,57 +195,82 @@
       const li = document.createElement("li");
       const fecha = new Date(registro.fecha).toLocaleString("es-EC");
       li.textContent =
-        `${registro.cliente} — ${registro.tipo} — ${fecha} — Pendiente de sincronización`;
+        `${registro.cliente} — ${registro.tipo} — ${fecha} — ` +
+        `${registro.estado}`;
       lista.appendChild(li);
     });
+  }
+
+  function mostrarError(campo, mensaje) {
+    const error = document.getElementById("error-" + campo.id);
+
+    if (!error) return;
+
+    error.textContent = mensaje;
+    error.classList.toggle("visible", mensaje !== "");
+    campo.setAttribute("aria-invalid", mensaje ? "true" : "false");
   }
 
   function validarCantidad(campo) {
     const valor = campo.value.trim();
 
-    if (valor === "") return true;
+    if (valor === "") {
+      mostrarError(campo, "");
+      return true;
+    }
 
     if (!/^\d+(,\d+)?$/.test(valor)) {
-      campo.setCustomValidity(
-        "Usa números y coma decimal. Ejemplo: 1,5. No uses punto."
+      mostrarError(
+        campo,
+        "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
       );
-      campo.reportValidity();
-      campo.setCustomValidity("");
-      campo.focus();
       return false;
     }
 
+    mostrarError(campo, "");
     return true;
   }
 
-  document.querySelectorAll(".cantidad").forEach(campo => {
- campo.addEventListener("input", () => {
-  if (campo.value.includes(".")) {
-    campo.setCustomValidity(
-      "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
-    );
-    campo.reportValidity();
-  } else {
-    campo.setCustomValidity("");
-  }
-});
+  camposCantidad.forEach(campo => {
+    campo.addEventListener("input", () => {
+      if (campo.value.includes(".")) {
+        mostrarError(
+          campo,
+          "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
+        );
+      } else {
+        validarCantidad(campo);
+      }
+    });
 
-campo.addEventListener("blur", () => {
-  validarCantidad(campo);
-});
+    campo.addEventListener("blur", () => {
+      validarCantidad(campo);
+    });
+  });
+
   formulario.addEventListener("submit", event => {
     event.preventDefault();
 
-    for (const campo of document.querySelectorAll(".cantidad")) {
-      if (!validarCantidad(campo)) return;
+    let cantidadesValidas = true;
+
+    camposCantidad.forEach(campo => {
+      if (!validarCantidad(campo)) {
+        cantidadesValidas = false;
+      }
+    });
+
+    if (!cantidadesValidas) {
+      estado.textContent =
+        "Revisa las cantidades marcadas antes de guardar.";
+      return;
     }
 
     const foto = document.getElementById("foto").files[0];
 
     if (foto) {
       estado.textContent =
-        "Esta versión de prueba no guarda fotografías todavía. " +
-        "Retira la foto y vuelve a guardar el registro.";
+        "Esta versión no guarda fotografías todavía. " +
+        "Retira la foto y vuelve a guardar el registro de prueba.";
       return;
     }
 
@@ -260,9 +294,13 @@ campo.addEventListener("blur", () => {
       const registros = leerRegistros();
       registros.push(registro);
       localStorage.setItem(CLAVE, JSON.stringify(registros));
+
       estado.textContent =
-        "Visita guardada en este navegador. Aún no se ha enviado al servidor.";
+        "Visita guardada en este navegador. " +
+        "Aún no se ha enviado al servidor.";
+
       formulario.reset();
+      camposCantidad.forEach(campo => mostrarError(campo, ""));
       mostrarRegistros();
     } catch (error) {
       estado.textContent =
@@ -276,6 +314,7 @@ campo.addEventListener("blur", () => {
       [JSON.stringify(registros, null, 2)],
       { type: "application/json;charset=utf-8" }
     );
+
     const url = URL.createObjectURL(archivo);
     const enlace = document.createElement("a");
     enlace.href = url;
