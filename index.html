@@ -210,14 +210,20 @@
   }
 
   document.querySelectorAll(".cantidad").forEach(campo => {
-    campo.addEventListener("input", () => {
-      campo.setCustomValidity("");
-    });
-    campo.addEventListener("blur", () => {
-      validarCantidad(campo);
-    });
-  });
+ campo.addEventListener("input", () => {
+  if (campo.value.includes(".")) {
+    campo.setCustomValidity(
+      "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
+    );
+    campo.reportValidity();
+  } else {
+    campo.setCustomValidity("");
+  }
+});
 
+campo.addEventListener("blur", () => {
+  validarCantidad(campo);
+});
   formulario.addEventListener("submit", event => {
     event.preventDefault();
 
