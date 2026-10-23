@@ -232,11 +232,13 @@
   }
 
   camposCantidad.forEach(campo => {
+
     campo.addEventListener("input", () => {
       if (campo.value.includes(".")) {
+        campo.value = campo.value.replace(/\./g, "");
         mostrarError(
           campo,
-          "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
+          "No se permite el punto decimal. Usa coma, por ejemplo: 1,5."
         );
       } else {
         validarCantidad(campo);
