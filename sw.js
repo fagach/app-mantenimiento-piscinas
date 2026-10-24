@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "mantenimiento-piscinas-v1";
+const CACHE_NAME = "mantenimiento-piscinas-v2";
 
 const ARCHIVOS = [
   "./",
@@ -30,21 +30,39 @@ self.addEventListener("activate", event => {
 });
 
 self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
+  const solicitud = event.request;
+
+  if (solicitud.method !== "GET") return;
+
+  if (solicitud.mode === "navigate") {
+    event.respondWith(
+      fetch(solicitud).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+
+        return (
+          await cache.match("./index.html") ||
+          await cache.match("./") ||
+          Response.error()
+        );
+      })
+    );
+    return;
+  }
 
   event.respondWith(
-    caches.match(event.request).then(respuestaGuardada => {
-      if (respuestaGuardada) return respuestaGuardada;
+    caches.match(solicitud).then(guardada => {
+      if (guardada) return guardada;
 
-      return fetch(event.request).then(respuesta => {
+      return fetch(solicitud).then(respuesta => {
         if (
           respuesta &&
           respuesta.status === 200 &&
-          new URL(event.request.url).origin === self.location.origin
+          new URL(solicitud.url).origin === self.location.origin
         ) {
           const copia = respuesta.clone();
+
           caches.open(CACHE_NAME).then(cache =>
-            cache.put(event.request, copia)
+            cache.put(solicitud, copia)
           );
         }
 
