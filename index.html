@@ -164,14 +164,31 @@
   "use strict";
 
   const CLAVE = "visitasPiscinasPendientes";
+  const DB_NOMBRE = "mantenimientoPiscinasDB";
+  const DB_VERSION = 1;
+
   const formulario = document.getElementById("formulario");
   const estado = document.getElementById("estado");
   const lista = document.getElementById("lista");
-  const camposCantidad = Array.from(
-    document.querySelectorAll(".cantidad")
-  );
+  const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
+  let db = null;
 
-  function leerRegistros() {
+  function abrirDB() {
+    return new Promise((resolve, reject) => {
+      const solicitud = indexedDB.open(DB_NOMBRE, DB_VERSION);
+
+      solicitud.onupgradeneeded = () => {
+        const base = solicitud.result;
+        if (!base.objectStoreNames.contains("visitas")) {
+          base.createObjectStore("visitas", { keyPath: "id" });
+        }
+      };
+      solicitud.onsuccess = () => resolve(solicitud.result);
+      solicitud.onerror = () => reject(solicitud.error);
+    });
+  }
+
+  function leerRegistrosAntiguos() {
     try {
       const datos = JSON.parse(localStorage.getItem(CLAVE) || "[]");
       return Array.isArray(datos) ? datos : [];
@@ -180,9 +197,47 @@
     }
   }
 
-  function mostrarRegistros() {
+  function obtenerTodas() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readonly");
+      const solicitud = tx.objectStore("visitas").getAll();
+      solicitud.onsuccess = () => resolve(solicitud.result || []);
+      solicitud.onerror = () => reject(solicitud.error);
+    });
+  }
+
+  function guardarEnDB(registro) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readwrite");
+      tx.objectStore("visitas").put(registro);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transacción cancelada"));
+    });
+  }
+
+  async function migrarRegistrosAntiguos() {
+    const antiguos = leerRegistrosAntiguos();
+    if (!antiguos.length) return 0;
+
+    const actuales = await obtenerTodas();
+    const ids = new Set(actuales.map(registro => registro.id));
+    let migrados = 0;
+
+    for (const registro of antiguos) {
+      if (!registro || !registro.id || ids.has(registro.id)) continue;
+      await guardarEnDB(registro);
+      ids.add(registro.id);
+      migrados++;
+    }
+    return migrados;
+  }
+
+  async function mostrarRegistros() {
     lista.replaceChildren();
-    const registros = leerRegistros();
+    const registros = (await obtenerTodas()).sort(
+      (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+    );
 
     if (registros.length === 0) {
       const li = document.createElement("li");
@@ -191,21 +246,20 @@
       return;
     }
 
-    registros.slice().reverse().forEach(registro => {
+    registros.forEach(registro => {
       const li = document.createElement("li");
       const fecha = new Date(registro.fecha).toLocaleString("es-EC");
+      const tieneFoto = registro.foto instanceof Blob;
       li.textContent =
         `${registro.cliente} — ${registro.tipo} — ${fecha} — ` +
-        `${registro.estado}`;
+        `${registro.estado}${tieneFoto ? " — Foto guardada" : ""}`;
       lista.appendChild(li);
     });
   }
 
   function mostrarError(campo, mensaje) {
     const error = document.getElementById("error-" + campo.id);
-
     if (!error) return;
-
     error.textContent = mensaje;
     error.classList.toggle("visible", mensaje !== "");
     campo.setAttribute("aria-invalid", mensaje ? "true" : "false");
@@ -232,7 +286,6 @@
   }
 
   camposCantidad.forEach(campo => {
-
     campo.addEventListener("input", () => {
       if (campo.value.includes(".")) {
         campo.value = campo.value.replace(/\./g, "");
@@ -245,36 +298,23 @@
       }
     });
 
-    campo.addEventListener("blur", () => {
-      validarCantidad(campo);
-    });
+    campo.addEventListener("blur", () => validarCantidad(campo));
   });
 
-  formulario.addEventListener("submit", event => {
+  formulario.addEventListener("submit", async event => {
     event.preventDefault();
 
     let cantidadesValidas = true;
-
     camposCantidad.forEach(campo => {
-      if (!validarCantidad(campo)) {
-        cantidadesValidas = false;
-      }
+      if (!validarCantidad(campo)) cantidadesValidas = false;
     });
 
     if (!cantidadesValidas) {
-      estado.textContent =
-        "Revisa las cantidades marcadas antes de guardar.";
+      estado.textContent = "Revisa las cantidades marcadas antes de guardar.";
       return;
     }
 
-    const foto = document.getElementById("foto").files[0];
-
-    if (foto) {
-      estado.textContent =
-        "Esta versión no guarda fotografías todavía. " +
-        "Retira la foto y vuelve a guardar el registro de prueba.";
-      return;
-    }
+    const foto = document.getElementById("foto").files[0] || null;
 
     const registro = {
       id: (window.crypto && crypto.randomUUID)
@@ -289,43 +329,73 @@
       floculante: document.getElementById("floculante").value.trim(),
       sal: document.getElementById("sal").value.trim(),
       novedades: document.getElementById("novedades").value.trim(),
-      estado: "Pendiente de sincronización"
+      estado: "Pendiente de sincronización",
+      foto: foto
     };
 
     try {
-      const registros = leerRegistros();
-      registros.push(registro);
-      localStorage.setItem(CLAVE, JSON.stringify(registros));
-
+      await guardarEnDB(registro);
       estado.textContent =
         "Visita guardada en este navegador. " +
+        (foto ? "La fotografía también se guardó localmente. " : "") +
         "Aún no se ha enviado al servidor.";
 
       formulario.reset();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
-      mostrarRegistros();
+      await mostrarRegistros();
     } catch (error) {
       estado.textContent =
-        "No se pudo guardar. El almacenamiento del navegador puede estar lleno.";
+        "No se pudo guardar. Comprueba el espacio disponible del navegador e inténtalo de nuevo.";
     }
   });
 
-  document.getElementById("exportar").addEventListener("click", () => {
-    const registros = leerRegistros();
-    const archivo = new Blob(
-      [JSON.stringify(registros, null, 2)],
-      { type: "application/json;charset=utf-8" }
-    );
+  document.getElementById("exportar").addEventListener("click", async () => {
+    try {
+      const registros = await obtenerTodas();
+      const salida = registros.map(registro => {
+        const copia = { ...registro };
+        if (copia.foto instanceof Blob) {
+          copia.foto = {
+            almacenada: true,
+            tipo: copia.foto.type,
+            tamanoBytes: copia.foto.size,
+            nota: "La imagen permanece en IndexedDB; este JSON no contiene sus datos binarios."
+          };
+        }
+        return copia;
+      });
 
-    const url = URL.createObjectURL(archivo);
-    const enlace = document.createElement("a");
-    enlace.href = url;
-    enlace.download = "visitas-piscinas-prueba.json";
-    enlace.click();
-    URL.revokeObjectURL(url);
+      const archivo = new Blob(
+        [JSON.stringify(salida, null, 2)],
+        { type: "application/json;charset=utf-8" }
+      );
+      const url = URL.createObjectURL(archivo);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = "visitas-piscinas-prueba.json";
+      enlace.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      estado.textContent =
+        "Se exportó el listado. Las fotos siguen guardadas en este navegador y no se incluyen en el JSON.";
+    } catch (error) {
+      estado.textContent = "No se pudieron exportar los registros.";
+    }
   });
 
-  mostrarRegistros();
+  (async () => {
+    try {
+      db = await abrirDB();
+      const migrados = await migrarRegistrosAntiguos();
+      await mostrarRegistros();
+      estado.textContent = migrados
+        ? `Almacenamiento preparado. Se copiaron ${migrados} registro(s) anteriores.`
+        : "Almacenamiento local preparado. Las nuevas visitas se guardarán en IndexedDB.";
+    } catch (error) {
+      estado.textContent =
+        "No se pudo iniciar el almacenamiento local. No guardes visitas hasta resolverlo.";
+      formulario.querySelector('button[type="submit"]').disabled = true;
+    }
+  })();
 })();
 </script>
   
