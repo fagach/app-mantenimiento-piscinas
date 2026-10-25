@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "mantenimiento-piscinas-v2";
+const CACHE_NAME = "mantenimiento-piscinas-v3";
 
 const ARCHIVOS = [
   "./",
