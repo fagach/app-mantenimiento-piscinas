@@ -335,6 +335,34 @@
 
     try {
       await guardarEnDB(registro);
+      try {
+  const URL_SERVIDOR = "https://script.google.com/macros/s/AKfycbyLhmS_gfASlK7imEf38nGu3YorNAq5ELb8XanVIj-tc8ESdutzxYdpUSbEjALSxecz/exec";
+
+  fetch(URL_SERVIDOR, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      mensaje: "Prueba PWA: " + registro.cliente,
+      visita: {
+        id: registro.id,
+        fecha: registro.fecha,
+        cliente: registro.cliente,
+        operador: registro.operador,
+        tipo: registro.tipo,
+        cloro: registro.cloro,
+        pastilla: registro.pastilla,
+        floculante: registro.floculante,
+        sal: registro.sal,
+        novedades: registro.novedades
+      }
+    })
+  });
+} catch (error) {
+  console.error("No se pudo iniciar el envío al servidor", error);
+}
       estado.textContent =
         "Visita guardada en este navegador. " +
         (foto ? "La fotografía también se guardó localmente. " : "") +
