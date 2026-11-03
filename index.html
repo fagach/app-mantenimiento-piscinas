@@ -212,7 +212,7 @@
   const lista = document.getElementById("lista");
   const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
   let db = null;
-
+  let sincronizacionEnCurso = false;
 
   // Lee la fecha original de captura de una fotografía JPEG (EXIF).
   async function leerFechaEXIF(archivo) {
@@ -323,6 +323,26 @@
   }
 
   
+  function compararFechaFoto(fechaEXIF, fechaVisita) {
+    if (!fechaEXIF || !fechaVisita) {
+      return "NO VERIFICABLE";
+    }
+
+    const fechaCaptura = fechaEXIF.substring(0, 10).replace(/:/g, "-");
+
+    const fechaEcuador = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Guayaquil",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date(fechaVisita));
+
+    return fechaCaptura === fechaEcuador
+      ? "COINCIDE"
+      : "FECHA DIFERENTE";
+  }
+ 
+  
   function abrirDB() {
     return new Promise((resolve, reject) => {
       const solicitud = indexedDB.open(DB_NOMBRE, DB_VERSION);
@@ -390,57 +410,158 @@
     });
   }
 
-  async function sincronizarPendientes() {
-    if (!navigator.onLine) return;
-
-    const URL_SERVIDOR = "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
-
-    const registros = await obtenerTodas();
-    const pendientes = registros.filter(
-      registro => registro.estado === "Pendiente de sincronización"
-    );
-
-    for (const registro of pendientes) {
-      try {
-        const respuesta = await fetch(URL_SERVIDOR, {
-          method: "POST",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          },
-          body: JSON.stringify({
-            visita: {
-              id: registro.id,
-              fecha: registro.fecha,
-              cliente: registro.cliente,
-              operador: registro.operador,
-              tipo: registro.tipo,
-              cloro: registro.cloro,
-              pastilla: registro.pastilla,
-              floculante: registro.floculante,
-              sal: registro.sal,
-              novedades: registro.novedades
-            }
-          })
-        });
-
-        const resultado = await respuesta.json();
-
-        if (!resultado.ok || !resultado.guardado) {
-          throw new Error("El servidor no confirmó el registro");
-        }
-
-        await actualizarEstadoEnDB(registro.id, "Sincronizada");
-
-      } catch (error) {
-        console.error(
-          "No se pudo sincronizar la visita " + registro.id,
-          error
-        );
-      }
+  
+function convertirFotoBase64(archivo) {
+  return new Promise((resolve, reject) => {
+    if (!archivo) {
+      resolve(null);
+      return;
     }
 
-    await mostrarRegistros();
+    const lector = new FileReader();
+
+    lector.onload = () => resolve(lector.result);
+    lector.onerror = () => reject(
+      new Error("No se pudo leer la fotografía")
+    );
+
+    lector.readAsDataURL(archivo);
+  });
+}
+
+  
+async function subirFotoDrive(archivo) {
+  if (!archivo) return "";
+
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+
+  const datosBase64 = await convertirFotoBase64(archivo);
+
+  const respuesta = await fetch(URL_SERVIDOR, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      accion: "guardarFoto",
+      datosBase64: datosBase64,
+      nombreOriginal: archivo.name,
+      tipoMime: archivo.type
+    })
+  });
+
+  const resultado = await respuesta.json();
+
+  if (!resultado.ok || !resultado.foto || !resultado.foto.enlace) {
+    throw new Error("El servidor no confirmó el guardado de la fotografía");
   }
+
+  return resultado.foto.enlace;
+}
+   
+  
+async function sincronizarPendientes() {
+  if (sincronizacionEnCurso) return;
+  sincronizacionEnCurso = true;
+  try {
+  
+  if (!navigator.onLine) return;
+
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+
+  const registros = await obtenerTodas();
+
+  const pendientes = registros.filter(
+    registro => registro.estado === "Pendiente de sincronización"
+  );
+
+  for (let registro of pendientes) {
+    try {
+      // Recuperar compatibilidad con fotografías antiguas.
+      const fotoMantenimiento =
+        registro.fotoMantenimiento || registro.foto || null;
+
+      // Subir la fotografía de mantenimiento si aún no tiene enlace.
+      if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
+        const enlace = await subirFotoDrive(fotoMantenimiento);
+
+        registro.enlaceFotoMantenimiento = enlace;
+        await guardarEnDB(registro);
+      }
+
+      // Subir la fotografía de novedades si aún no tiene enlace.
+      if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
+        const enlace = await subirFotoDrive(registro.fotoNovedades);
+
+        registro.enlaceFotoNovedades = enlace;
+        await guardarEnDB(registro);
+      }
+
+      // Enviar la visita completa al servidor.
+      const respuesta = await fetch(URL_SERVIDOR, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify({
+          accion: "guardarVisita",
+          visita: {
+            id: registro.id,
+            fecha: registro.fecha,
+            cliente: registro.cliente,
+            operador: registro.operador,
+            tipo: registro.tipo,
+            aspirada: registro.aspirada,
+            cepillada: registro.cepillada,
+            limpiezaBordes: registro.limpiezaBordes,
+            cloro: registro.cloro,
+            pastilla: registro.pastilla,
+            floculante: registro.floculante,
+            sal: registro.sal,
+            limpiezaFiltro: registro.limpiezaFiltro,
+            limpiezaCuba: registro.limpiezaCuba,
+            limpiezaImpulsor: registro.limpiezaImpulsor,
+            bombaMantenimiento: registro.bombaMantenimiento,
+            observaciones: registro.novedades,
+            fotoMantenimiento: registro.enlaceFotoMantenimiento || "",
+            fotoNovedades: registro.enlaceFotoNovedades || "",
+            correo: registro.correo || "",
+            fechaEXIFMantenimiento:
+              registro.fechaEXIFMantenimiento || "",
+            comparacionFechaFoto:
+              registro.comparacionFechaFoto || "NO VERIFICABLE"
+          }
+        })
+      });
+
+      const resultado = await respuesta.json();
+
+      if (!resultado.ok || !resultado.guardado) {
+        throw new Error(
+          resultado.error || "El servidor no confirmó el registro"
+        );
+      }
+
+      await actualizarEstadoEnDB(
+        registro.id,
+        "Sincronizada"
+      );
+
+    } catch (error) {
+      console.error(
+        "No se pudo sincronizar la visita " + registro.id,
+        error
+      );
+    }
+  }
+
+ await mostrarRegistros();
+} finally {
+  sincronizacionEnCurso = false;
+}
+}
   
   async function migrarRegistrosAntiguos() {
     const antiguos = leerRegistrosAntiguos();
@@ -463,29 +584,46 @@
     sincronizarPendientes();
   });
   
-  async function mostrarRegistros() {
-    lista.replaceChildren();
-    const registros = (await obtenerTodas()).sort(
-      (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-    );
+  
+async function mostrarRegistros() {
+  lista.replaceChildren();
 
-    if (registros.length === 0) {
-      const li = document.createElement("li");
-      li.textContent = "Todavía no hay visitas guardadas.";
-      lista.appendChild(li);
-      return;
-    }
+  const registros = (await obtenerTodas()).sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  );
 
-    registros.forEach(registro => {
-      const li = document.createElement("li");
-      const fecha = new Date(registro.fecha).toLocaleString("es-EC");
-      const tieneFoto = registro.foto instanceof Blob;
-      li.textContent =
-        `${registro.cliente} — ${registro.tipo} — ${fecha} — ` +
-        `${registro.estado}${tieneFoto ? " — Foto guardada" : ""}`;
-      lista.appendChild(li);
-    });
+  if (registros.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "Todavía no hay visitas guardadas.";
+    lista.appendChild(li);
+    return;
   }
+
+  registros.forEach(registro => {
+    const li = document.createElement("li");
+    const fecha = new Date(registro.fecha).toLocaleString("es-EC");
+
+    const tieneFotoMantenimiento =
+      registro.fotoMantenimiento instanceof Blob ||
+      registro.foto instanceof Blob;
+
+    const tieneFotoNovedades =
+      registro.fotoNovedades instanceof Blob;
+
+    const estadoFoto = registro.comparacionFechaFoto
+      ? ` — Fecha foto: ${registro.comparacionFechaFoto}`
+      : "";
+
+    li.textContent =
+      `${registro.cliente} — ${registro.tipo} — ${fecha} — ` +
+      `${registro.estado}` +
+      `${tieneFotoMantenimiento ? " — Foto mantenimiento guardada" : ""}` +
+      `${tieneFotoNovedades ? " — Foto novedades guardada" : ""}` +
+      estadoFoto;
+
+    lista.appendChild(li);
+  });
+}
 
   function mostrarError(campo, mensaje) {
     const error = document.getElementById("error-" + campo.id);
@@ -550,12 +688,13 @@
     const fotoNovedades =
       document.getElementById("fotoNovedades").files[0] || null;
     
+    const fechaVisita = new Date().toISOString();
        
-        const registro = {
+    const registro = {
       id: (window.crypto && crypto.randomUUID)
         ? crypto.randomUUID()
         : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
-      fecha: new Date().toISOString(),
+      fecha: fechaVisita,
       cliente: document.getElementById("cliente").value.trim(),
       operador: document.getElementById("operador").value.trim(),
       tipo: document.getElementById("tipo").value,
@@ -573,59 +712,38 @@
       novedades: document.getElementById("novedades").value.trim(),
       estado: "Pendiente de sincronización",
       fotoMantenimiento: fotoMantenimiento,
-      fotoNovedades: fotoNovedades
+      fotoNovedades: fotoNovedades,
+      fechaEXIFMantenimiento: null,
+      comparacionFechaFoto: "NO VERIFICABLE"
     };
 
         try {
       await guardarEnDB(registro);
 
-      let mensajeServidor = "";
+      registro.fechaEXIFMantenimiento = fotoMantenimiento
+      ? await leerFechaEXIF(fotoMantenimiento)
+      : null;
 
-      try {
-        const URL_SERVIDOR = "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+      registro.comparacionFechaFoto = compararFechaFoto(
+      registro.fechaEXIFMantenimiento,
+      fechaVisita
+    );
 
-        const respuesta = await fetch(URL_SERVIDOR, {
-          method: "POST",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          },
-          body: JSON.stringify({
-            visita: {
-              id: registro.id,
-              fecha: registro.fecha,
-              cliente: registro.cliente,
-              operador: registro.operador,
-              tipo: registro.tipo,
-              cloro: registro.cloro,
-              pastilla: registro.pastilla,
-              floculante: registro.floculante,
-              sal: registro.sal,
-              novedades: registro.novedades
-            }
-          })
-        });
-
-        const resultado = await respuesta.json();
-
-        if (!resultado.ok || !resultado.guardado) {
-          throw new Error("El servidor no confirmó el guardado");
-        }
-
-        mensajeServidor = resultado.duplicado
-          ? "El servidor ya tenía este registro."
-          : "Visita recibida y guardada en el servidor.";
-
-      await actualizarEstadoEnDB(registro.id, "Sincronizada");
-
-      } catch (error) {
-        console.error("Error al enviar la visita:", error);
-        mensajeServidor = "Pendiente de sincronización con el servidor.";
-      }
+    await guardarEnDB(registro);    
+      
+      
+      const mensajeServidor = "Pendiente de sincronización con el servidor.";
 
       estado.textContent =
-        "Visita guardada en este navegador. " +
-        (foto ? "La fotografía también se guardó localmente. " : "") +
-        mensajeServidor;
+        "Visita guardada en este navegador. " + mensajeServidor;
+
+      // Iniciar la sincronización sin detener el formulario.
+      sincronizarPendientes().catch(error => {
+        console.error("Error en la sincronización:", error);
+      });
+
+      estado.textContent =
+        "Visita guardada en este navegador. " + mensajeServidor;
 
       formulario.reset();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
@@ -641,19 +759,24 @@
   document.getElementById("exportar").addEventListener("click", async () => {
     try {
       const registros = await obtenerTodas();
-      const salida = registros.map(registro => {
-        const copia = { ...registro };
-        if (copia.foto instanceof Blob) {
-          copia.foto = {
-            almacenada: true,
-            tipo: copia.foto.type,
-            tamanoBytes: copia.foto.size,
-            nota: "La imagen permanece en IndexedDB; este JSON no contiene sus datos binarios."
-          };
-        }
-        return copia;
-      });
+     const salida = registros.map(registro => {
+  const copia = { ...registro };
 
+  ["fotoMantenimiento", "fotoNovedades", "foto"].forEach(campo => {
+    const foto = copia[campo];
+
+    if (foto instanceof Blob) {
+      copia[campo] = {
+        almacenada: true,
+        tipo: foto.type,
+        tamanoBytes: foto.size,
+        nota: "La imagen permanece en IndexedDB; este JSON no contiene sus datos binarios."
+      };
+    }
+  });
+
+  return copia;
+});
       const archivo = new Blob(
         [JSON.stringify(salida, null, 2)],
         { type: "application/json;charset=utf-8" }
