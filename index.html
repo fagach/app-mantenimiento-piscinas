@@ -434,9 +434,14 @@
       return;
     }
 
-    const foto = document.getElementById("foto").files[0] || null;
+    const fotoMantenimiento =
+      document.getElementById("fotoMantenimiento").files[0] || null;
 
-    const registro = {
+    const fotoNovedades =
+      document.getElementById("fotoNovedades").files[0] || null;
+    
+       
+        const registro = {
       id: (window.crypto && crypto.randomUUID)
         ? crypto.randomUUID()
         : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
@@ -444,13 +449,21 @@
       cliente: document.getElementById("cliente").value.trim(),
       operador: document.getElementById("operador").value.trim(),
       tipo: document.getElementById("tipo").value,
+      aspirada: document.getElementById("aspirada").checked ? "Sí" : "",
+      cepillada: document.getElementById("cepillada").checked ? "Sí" : "",
+      limpiezaBordes: document.getElementById("limpiezaBordes").checked ? "Sí" : "",
+      limpiezaFiltro: document.getElementById("limpiezaFiltro").checked ? "Sí" : "",
+      limpiezaCuba: document.getElementById("limpiezaCuba").checked ? "Sí" : "",
+      limpiezaImpulsor: document.getElementById("limpiezaImpulsor").checked ? "Sí" : "",
+      bombaMantenimiento: document.getElementById("bombaMantenimiento").checked ? "Sí" : "",
       cloro: document.getElementById("cloro").value.trim(),
       pastilla: document.getElementById("pastilla").value.trim(),
       floculante: document.getElementById("floculante").value.trim(),
       sal: document.getElementById("sal").value.trim(),
       novedades: document.getElementById("novedades").value.trim(),
       estado: "Pendiente de sincronización",
-      foto: foto
+      fotoMantenimiento: fotoMantenimiento,
+      fotoNovedades: fotoNovedades
     };
 
         try {
