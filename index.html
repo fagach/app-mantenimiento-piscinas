@@ -213,6 +213,116 @@
   const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
   let db = null;
 
+
+  // Lee la fecha original de captura de una fotografía JPEG (EXIF).
+  async function leerFechaEXIF(archivo) {
+    if (!archivo || !archivo.type || !archivo.type.includes("jpeg")) {
+      return null;
+    }
+
+    try {
+      const buffer = await archivo.arrayBuffer();
+      const datos = new DataView(buffer);
+      const longitud = datos.byteLength;
+
+      if (datos.getUint16(0) !== 0xFFD8) return null;
+
+      let posicion = 2;
+
+      while (posicion + 4 < longitud) {
+        if (datos.getUint8(posicion) !== 0xFF) break;
+
+        const marcador = datos.getUint8(posicion + 1);
+        const tamano = datos.getUint16(posicion + 2);
+
+        if (tamano < 2 || posicion + 2 + tamano > longitud) break;
+
+        if (marcador === 0xE1) {
+          const inicio = posicion + 4;
+
+          if (
+            datos.getUint8(inicio) !== 0x45 ||
+            datos.getUint8(inicio + 1) !== 0x78 ||
+            datos.getUint8(inicio + 2) !== 0x69 ||
+            datos.getUint8(inicio + 3) !== 0x66
+          ) break;
+
+          const tiff = inicio + 6;
+          const orden = datos.getUint16(tiff);
+
+          const littleEndian = orden === 0x4949;
+          if (!littleEndian && orden !== 0x4D4D) return null;
+
+          if (datos.getUint16(tiff + 2, littleEndian) !== 42) return null;
+
+          const leerIFD = (desplazamiento) => {
+            const inicioIFD = tiff + desplazamiento;
+            const cantidad = datos.getUint16(inicioIFD, littleEndian);
+            const etiquetas = {};
+
+            for (let i = 0; i < cantidad; i++) {
+              const entrada = inicioIFD + 2 + i * 12;
+              const etiqueta = datos.getUint16(entrada, littleEndian);
+              etiquetas[etiqueta] = entrada;
+            }
+
+            return etiquetas;
+          };
+
+          const desplazamientoIFD0 =
+            datos.getUint32(tiff + 4, littleEndian);
+
+          const ifd0 = leerIFD(desplazamientoIFD0);
+          const etiquetaExif = ifd0[0x8769];
+
+          if (!etiquetaExif) return null;
+
+          const desplazamientoExif =
+            datos.getUint32(etiquetaExif + 8, littleEndian);
+
+          const ifdExif = leerIFD(desplazamientoExif);
+          const etiquetaFecha = ifdExif[0x9003];
+
+          if (!etiquetaFecha) return null;
+
+          const entrada = etiquetaFecha;
+          const tipo = datos.getUint16(entrada + 2, littleEndian);
+          const cantidad = datos.getUint32(entrada + 4, littleEndian);
+
+          if (tipo !== 2 || cantidad < 19) return null;
+
+          const desplazamiento =
+            datos.getUint32(entrada + 8, littleEndian);
+
+          const inicioTexto = tiff + desplazamiento;
+
+          if (inicioTexto + cantidad > longitud) return null;
+
+          let fecha = "";
+
+          for (let i = 0; i < cantidad - 1; i++) {
+            fecha += String.fromCharCode(
+              datos.getUint8(inicioTexto + i)
+            );
+          }
+
+          return /^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/.test(fecha)
+            ? fecha
+            : null;
+        }
+
+        posicion += 2 + tamano;
+      }
+
+      return null;
+
+    } catch (error) {
+      console.warn("No se pudo leer la fecha EXIF:", error);
+      return null;
+    }
+  }
+
+  
   function abrirDB() {
     return new Promise((resolve, reject) => {
       const solicitud = indexedDB.open(DB_NOMBRE, DB_VERSION);
