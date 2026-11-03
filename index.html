@@ -99,50 +99,90 @@
     Todavía no se envían a Google Sheets.
   </p>
 
-  <form id="formulario">
-    <label for="cliente">Cliente</label>
-    <input id="cliente" name="cliente" type="text"
-           autocomplete="off" required>
+  
+<form id="formulario">
+  <label for="cliente">Cliente</label>
+  <input id="cliente" name="cliente" type="text"
+         autocomplete="off" required>
 
-    <label for="operador">Operador</label>
-    <input id="operador" name="operador" type="text"
-           autocomplete="off" required>
+  <label for="operador">Operador</label>
+  <input id="operador" name="operador" type="text"
+         autocomplete="off" required>
 
-    <label for="tipo">Tipo de visita</label>
-    <select id="tipo" name="tipo" required>
-      <option value="Programada">Programada</option>
-      <option value="No programada">No programada</option>
-    </select>
+  <label for="tipo">Tipo de visita</label>
+  <select id="tipo" name="tipo" required>
+    <option value="Programada">Programada</option>
+    <option value="No programada">No programada</option>
+  </select>
 
-    <label for="cloro">Cloro (libras)</label>
-    <input class="cantidad" id="cloro" name="cloro"
-           type="text" inputmode="decimal" placeholder="Ej.: 1,5">
-    <div class="error" id="error-cloro" aria-live="polite"></div>
+  <label>
+    <input type="checkbox" id="aspirada" name="aspirada">
+    Aspirada
+  </label>
 
-    <label for="pastilla">Pastillas (unidades)</label>
-    <input class="cantidad" id="pastilla" name="pastilla"
-           type="text" inputmode="decimal" placeholder="Ej.: 1">
-    <div class="error" id="error-pastilla" aria-live="polite"></div>
+  <label>
+    <input type="checkbox" id="cepillada" name="cepillada">
+    Cepillada
+  </label>
 
-    <label for="floculante">Floculante (cantidad)</label>
-    <input class="cantidad" id="floculante" name="floculante"
-           type="text" inputmode="decimal" placeholder="Ej.: 0,5">
-    <div class="error" id="error-floculante" aria-live="polite"></div>
+  <label>
+    <input type="checkbox" id="limpiezaBordes" name="limpiezaBordes">
+    Limpieza de Bordes
+  </label>
 
-    <label for="sal">Sal (kg)</label>
-    <input class="cantidad" id="sal" name="sal"
-           type="text" inputmode="decimal" placeholder="Ej.: 2,5">
-    <div class="error" id="error-sal" aria-live="polite"></div>
+  <label for="cloro">Cloro (Lbs)</label>
+  <input class="cantidad" id="cloro" name="cloro"
+         type="text" inputmode="decimal" placeholder="Ej.: 1,5">
+  <div class="error" id="error-cloro" aria-live="polite"></div>
 
-    <label for="novedades">Novedades</label>
-    <textarea id="novedades" name="novedades" rows="3"></textarea>
+  <label for="pastilla">Pastilla (Unid)</label>
+  <input class="cantidad" id="pastilla" name="pastilla"
+         type="text" inputmode="decimal" placeholder="Ej.: 1">
+  <div class="error" id="error-pastilla" aria-live="polite"></div>
 
-    <label for="foto">Foto de mantenimiento (opcional)</label>
-    <input id="foto" name="foto" type="file" accept="image/*"
-           capture="environment">
+  <label for="floculante">Floculante (Lts)</label>
+  <input class="cantidad" id="floculante" name="floculante"
+         type="text" inputmode="decimal" placeholder="Ej.: 0,5">
+  <div class="error" id="error-floculante" aria-live="polite"></div>
 
-    <button type="submit">Guardar visita en este dispositivo</button>
-  </form>
+  <label for="sal">Sal (Kgs)</label>
+  <input class="cantidad" id="sal" name="sal"
+         type="text" inputmode="decimal" placeholder="Ej.: 2,5">
+  <div class="error" id="error-sal" aria-live="polite"></div>
+
+  <label>
+    <input type="checkbox" id="limpiezaFiltro" name="limpiezaFiltro">
+    Limpieza Filtro
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaCuba" name="limpiezaCuba">
+    Limpieza Cuba
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaImpulsor" name="limpiezaImpulsor">
+    Limpieza Impulsor
+  </label>
+
+  <label>
+    <input type="checkbox" id="bombaMantenimiento" name="bombaMantenimiento">
+    Bomba en Mantenimiento
+  </label>
+
+  <label for="novedades">Observaciones</label>
+  <textarea id="novedades" name="novedades" rows="3"></textarea>
+
+  <label for="fotoMantenimiento">Foto Mantenimiento (obligatoria)</label>
+  <input id="fotoMantenimiento" name="fotoMantenimiento"
+         type="file" accept="image/*" capture="environment" required>
+
+  <label for="fotoNovedades">Foto Novedades (opcional)</label>
+  <input id="fotoNovedades" name="fotoNovedades"
+         type="file" accept="image/*" capture="environment">
+
+  <button type="submit">Guardar visita en este dispositivo</button>
+</form>
 
   <div id="estado" role="status">
     Todavía no hay visitas guardadas en esta sesión.
