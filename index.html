@@ -242,7 +242,7 @@ let idTokenGoogle = null;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
 
-function recibirCredencialGoogle(respuesta) {
+async function recibirCredencialGoogle(respuesta) {
   if (!respuesta || !respuesta.credential) {
     estadoUsuario.textContent =
       "No se pudo completar la identificación de Google.";
@@ -252,7 +252,38 @@ function recibirCredencialGoogle(respuesta) {
   idTokenGoogle = respuesta.credential;
 
   estadoUsuario.textContent =
-    "Cuenta de Google identificada. El servidor comprobará tu autorización al sincronizar.";
+    "Cuenta de Google identificada. Comprobando perfil...";
+
+  try {
+    const respuestaPerfil = await fetch(URL_SERVIDOR, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify({
+        accion: "consultarPerfil",
+        idToken: idTokenGoogle
+      })
+    });
+
+    const perfil = await respuestaPerfil.json();
+
+    const panel = document.getElementById("autorizacionFotos");
+
+    if (perfil.ok && perfil.perfil === "Administrador") {
+      panel.hidden = false;
+      document.getElementById("estadoAutorizacionFotos").textContent =
+        "Perfil de administrador confirmado.";
+    } else {
+      panel.hidden = true;
+    }
+
+  } catch (error) {
+    document.getElementById("autorizacionFotos").hidden = true;
+    document.getElementById("estadoAutorizacionFotos").textContent =
+      "No se pudo comprobar el perfil.";
+  }
+
   sincronizarPendientes();
 }
 
@@ -900,6 +931,14 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
-
+<div id="contenedorPicker" hidden>
+  <iframe
+    id="iframePicker"
+    title="Autorización de carpeta de fotografías"
+    width="100%"
+    height="550"
+    frameborder="0">
+  </iframe>
+</div>
 </body>
 </html>
