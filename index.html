@@ -242,6 +242,50 @@ let idTokenGoogle = null;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
 
+function iniciarAutorizacionCarpeta() {
+  if (!idTokenGoogle) {
+    estadoUsuario.textContent =
+      "Primero debes identificarte con Google.";
+    return;
+  }
+
+  const contenedor = document.getElementById("contenedorPicker");
+  const iframe = document.getElementById("iframePicker");
+
+  contenedor.hidden = false;
+
+  iframe.src = URL_SERVIDOR + "?selector=1";
+}
+
+document.getElementById("btnAutorizarCarpeta")
+  .addEventListener("click", iniciarAutorizacionCarpeta);
+
+window.addEventListener("message", function(event) {
+  const iframe = document.getElementById("iframePicker");
+
+  if (event.source !== iframe.contentWindow) return;
+
+  if (event.data?.tipo === "PICKER_LISTO") {
+    iframe.contentWindow.postMessage({
+      tipo: "AUTORIZAR_PICKER",
+      idToken: idTokenGoogle
+    }, event.origin);
+  }
+
+  if (event.data?.tipo === "RESULTADO_PICKER") {
+    document.getElementById("estadoAutorizacionFotos").textContent =
+      event.data.ok
+        ? "Carpeta seleccionada: " + event.data.nombre
+        : event.data.cancelado
+          ? "Selección cancelada."
+          : "La carpeta seleccionada no es la esperada.";
+
+    if (event.data.ok) {
+      document.getElementById("contenedorPicker").hidden = true;
+    }
+  }
+});
+  
 async function recibirCredencialGoogle(respuesta) {
   if (!respuesta || !respuesta.credential) {
     estadoUsuario.textContent =
