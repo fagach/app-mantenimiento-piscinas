@@ -266,7 +266,27 @@ window.addEventListener("message", function(event) {
 
   if (event.source !== iframe.contentWindow) return;
 
+  let origenConfiable = false;
+
+  try {
+    const host = new URL(event.origin).hostname;
+
+    origenConfiable =
+      event.origin.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com")
+      );
+  } catch (error) {
+    return;
+  }
+
+  if (!origenConfiable) return;
+
   if (event.data?.tipo === "PICKER_LISTO") {
+    if (!idTokenGoogle) return;
+
     iframe.contentWindow.postMessage({
       tipo: "AUTORIZAR_PICKER",
       idToken: idTokenGoogle
@@ -276,7 +296,7 @@ window.addEventListener("message", function(event) {
   if (event.data?.tipo === "RESULTADO_PICKER") {
     document.getElementById("estadoAutorizacionFotos").textContent =
       event.data.ok
-        ? "Carpeta seleccionada: " + event.data.nombre
+        ? "Carpeta autorizada: " + event.data.nombre
         : event.data.cancelado
           ? "Selección cancelada."
           : "La carpeta seleccionada no es la esperada.";
