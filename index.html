@@ -237,7 +237,8 @@
   
 const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
-
+const URL_SERVIDOR =
+  "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
 let idTokenGoogle = null;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
@@ -580,9 +581,6 @@ function convertirFotoBase64(archivo) {
 async function subirFotoDrive(archivo) {
   if (!archivo) return "";
 
-  const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
-
   const datosBase64 = await convertirFotoBase64(archivo);
 
   const respuesta = await fetch(URL_SERVIDOR, {
@@ -621,10 +619,7 @@ async function sincronizarPendientes() {
   
   if (!navigator.onLine) return;
 
-  const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
-
-  const registros = await obtenerTodas();
+    const registros = await obtenerTodas();
 
   const pendientes = registros.filter(
     registro => registro.estado === "Pendiente de sincronización"
