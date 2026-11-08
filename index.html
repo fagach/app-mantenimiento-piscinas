@@ -597,29 +597,26 @@ function convertirFotoBase64(archivo) {
 }
 
   
+
 async function subirFotoDrive(archivo) {
   if (!archivo) return "";
 
   const datosBase64 = await convertirFotoBase64(archivo);
 
-  const respuesta = await fetch(URL_SERVIDOR, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      accion: "guardarFoto",
-      idToken: idTokenGoogle,
-      datosBase64: datosBase64,
-      nombreOriginal: archivo.name,
-      tipoMime: archivo.type
-    })
+  const resultado = await solicitarServidor({
+    accion: "guardarFoto",
+    idToken: idTokenGoogle,
+    datosBase64: datosBase64,
+    nombreOriginal: archivo.name,
+    tipoMime: archivo.type
   });
 
-  const resultado = await respuesta.json();
-
-  if (!resultado.ok || !resultado.foto || !resultado.foto.enlace) {
-    throw new Error("El servidor no confirmó el guardado de la fotografía");
+  if (!resultado || !resultado.ok ||
+      !resultado.foto || !resultado.foto.enlace) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no confirmó el guardado de la fotografía."
+    );
   }
 
   return resultado.foto.enlace;
