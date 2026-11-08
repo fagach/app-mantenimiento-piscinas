@@ -999,5 +999,93 @@ if ("serviceWorker" in navigator) {
     frameborder="0">
   </iframe>
 </div>
+  
+<iframe
+  id="iframePuente"
+  title="Comunicación con el servidor"
+  width="1"
+  height="1"
+  style="position:absolute;left:-9999px;border:0;">
+</iframe>
+
+<script>
+  const iframePuente = document.getElementById("iframePuente");
+
+  let puentePreparado = false;
+  let contadorSolicitudes = 0;
+  const solicitudesPendientes = new Map();
+
+  function origenServidorConfiable(origen) {
+    try {
+      const host = new URL(origen).hostname;
+      return origen.startsWith("https://") &&
+        (
+          host === "script.google.com" ||
+          host === "script.googleusercontent.com" ||
+          host.endsWith(".script.googleusercontent.com")
+        );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  window.addEventListener("message", function(event) {
+    if (event.source !== iframePuente.contentWindow) return;
+    if (!origenServidorConfiable(event.origin)) return;
+
+    if (event.data?.tipo === "PUENTE_LISTO") {
+      puentePreparado = true;
+      return;
+    }
+
+    if (event.data?.tipo === "RESPUESTA_SERVIDOR") {
+      const pendiente = solicitudesPendientes.get(
+        event.data.idSolicitud
+      );
+
+      if (!pendiente) return;
+
+      clearTimeout(pendiente.temporizador);
+      solicitudesPendientes.delete(event.data.idSolicitud);
+      pendiente.resolver(event.data.resultado);
+    }
+  });
+
+  iframePuente.src = URL_SERVIDOR;
+
+  async function solicitarServidor(solicitud) {
+    const inicio = Date.now();
+
+    while (!puentePreparado) {
+      if (Date.now() - inicio > 30000) {
+        throw new Error("El puente no respondió.");
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    const idSolicitud =
+      "solicitud-" + Date.now() + "-" + (++contadorSolicitudes);
+
+    return new Promise((resolve, reject) => {
+      const temporizador = setTimeout(() => {
+        solicitudesPendientes.delete(idSolicitud);
+        reject(new Error("El servidor no respondió a tiempo."));
+      }, 60000);
+
+      solicitudesPendientes.set(idSolicitud, {
+        resolver: resolve,
+        temporizador: temporizador
+      });
+
+      iframePuente.contentWindow.postMessage({
+        tipo: "SOLICITUD_SERVIDOR",
+        idSolicitud: idSolicitud,
+        solicitud: solicitud
+      }, "*");
+    });
+  }
+</script>
+
 </body>
 </html>
