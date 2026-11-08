@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#075985">
   <title>App Mantenimiento Piscinas</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     * { box-sizing: border-box; }
 
@@ -93,6 +94,13 @@
 <body>
 <main>
   <h1>Mantenimiento de Piscinas</h1>
+  <div id="accesoGoogle">
+  <p class="note"><strong>Acceso al sistema</strong></p>
+  <div id="botonGoogle"></div>
+  <p id="estadoUsuario" class="note" aria-live="polite">
+    Debes identificarte con tu cuenta de Google para sincronizar visitas.
+  </p>
+</div>
 
   <p class="note">
     Prototipo de prueba. Los registros se guardan en este navegador.
@@ -213,6 +221,57 @@
   const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
   let db = null;
   let sincronizacionEnCurso = false;
+  
+const ID_CLIENTE_OAUTH =
+  "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
+
+let idTokenGoogle = null;
+
+const estadoUsuario = document.getElementById("estadoUsuario");
+
+function recibirCredencialGoogle(respuesta) {
+  if (!respuesta || !respuesta.credential) {
+    estadoUsuario.textContent =
+      "No se pudo completar la identificación de Google.";
+    return;
+  }
+
+  idTokenGoogle = respuesta.credential;
+
+  estadoUsuario.textContent =
+    "Cuenta de Google identificada. El servidor comprobará tu autorización al sincronizar.";
+  sincronizarPendientes();
+}
+
+function inicializarGoogleIdentity() {
+  if (
+    !window.google ||
+    !google.accounts ||
+    !google.accounts.id
+  ) {
+    estadoUsuario.textContent =
+      "No se pudo cargar el servicio de inicio de sesión de Google. Recarga cuando tengas conexión.";
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: ID_CLIENTE_OAUTH,
+    callback: recibirCredencialGoogle,
+    auto_select: false
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById("botonGoogle"),
+    {
+      theme: "outline",
+      size: "large",
+      text: "signin_with",
+      shape: "rectangular",
+      width: 280
+    }
+  );
+}
+
 
   // Lee la fecha original de captura de una fotografía JPEG (EXIF).
   async function leerFechaEXIF(archivo) {
@@ -445,6 +504,7 @@ async function subirFotoDrive(archivo) {
     },
     body: JSON.stringify({
       accion: "guardarFoto",
+      idToken: idTokenGoogle,
       datosBase64: datosBase64,
       nombreOriginal: archivo.name,
       tipoMime: archivo.type
@@ -462,6 +522,11 @@ async function subirFotoDrive(archivo) {
    
   
 async function sincronizarPendientes() {
+  if (!idTokenGoogle) {
+  estado.textContent =
+    "Visita guardada localmente. Identifícate con Google para sincronizar.";
+  return;
+}
   if (sincronizacionEnCurso) return;
   sincronizacionEnCurso = true;
   try {
@@ -507,6 +572,7 @@ async function sincronizarPendientes() {
         },
         body: JSON.stringify({
           accion: "guardarVisita",
+          idToken: idTokenGoogle,
           visita: {
             id: registro.id,
             fecha: registro.fecha,
@@ -579,7 +645,7 @@ async function sincronizarPendientes() {
     }
     return migrados;
   }
-
+  window.addEventListener("load", inicializarGoogleIdentity);
   window.addEventListener("online", () => {
     sincronizarPendientes();
   });
