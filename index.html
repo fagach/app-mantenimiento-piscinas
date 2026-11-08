@@ -328,28 +328,29 @@ async function recibirCredencialGoogle(respuesta) {
 
     const panel = document.getElementById("autorizacionFotos");
 
-    if (perfil && perfil.ok &&
-        perfil.perfil === "Administrador") {
+    if (!perfil || !perfil.ok) {
+      panel.hidden = true;
+      estadoUsuario.textContent =
+        perfil?.error || "No se pudo verificar el perfil.";
+      return;
+    }
+
+    if (perfil.perfil === "Administrador") {
       panel.hidden = false;
       document.getElementById("estadoAutorizacionFotos").textContent =
         "Perfil de administrador confirmado.";
     } else {
       panel.hidden = true;
-      estadoUsuario.textContent =
-        perfil && perfil.error
-          ? perfil.error
-          : "No se pudo verificar el perfil.";
     }
+
+    await sincronizarPendientes();
 
   } catch (error) {
     document.getElementById("autorizacionFotos").hidden = true;
     estadoUsuario.textContent =
       "No se pudo comprobar el perfil: " + error.message;
   }
-
-  sincronizarPendientes();
 }
-
   
 function inicializarGoogleIdentity() {
   if (
