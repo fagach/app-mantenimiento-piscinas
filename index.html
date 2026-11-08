@@ -623,53 +623,44 @@ async function subirFotoDrive(archivo) {
 }
    
   
+
 async function sincronizarPendientes() {
   if (!idTokenGoogle) {
-  estado.textContent =
-    "Visita guardada localmente. Identifícate con Google para sincronizar.";
-  return;
-}
+    estado.textContent =
+      "Visita guardada localmente. Identifícate con Google para sincronizar.";
+    return;
+  }
+
   if (sincronizacionEnCurso) return;
   sincronizacionEnCurso = true;
+
   try {
-  
-  if (!navigator.onLine) return;
+    if (!navigator.onLine) return;
 
     const registros = await obtenerTodas();
 
-  const pendientes = registros.filter(
-    registro => registro.estado === "Pendiente de sincronización"
-  );
+    const pendientes = registros.filter(
+      registro => registro.estado === "Pendiente de sincronización"
+    );
 
-  for (let registro of pendientes) {
-    try {
-      // Recuperar compatibilidad con fotografías antiguas.
-      const fotoMantenimiento =
-        registro.fotoMantenimiento || registro.foto || null;
+    for (let registro of pendientes) {
+      try {
+        const fotoMantenimiento =
+          registro.fotoMantenimiento || registro.foto || null;
 
-      // Subir la fotografía de mantenimiento si aún no tiene enlace.
-      if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
-        const enlace = await subirFotoDrive(fotoMantenimiento);
+        if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
+          const enlace = await subirFotoDrive(fotoMantenimiento);
+          registro.enlaceFotoMantenimiento = enlace;
+          await guardarEnDB(registro);
+        }
 
-        registro.enlaceFotoMantenimiento = enlace;
-        await guardarEnDB(registro);
-      }
+        if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
+          const enlace = await subirFotoDrive(registro.fotoNovedades);
+          registro.enlaceFotoNovedades = enlace;
+          await guardarEnDB(registro);
+        }
 
-      // Subir la fotografía de novedades si aún no tiene enlace.
-      if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
-        const enlace = await subirFotoDrive(registro.fotoNovedades);
-
-        registro.enlaceFotoNovedades = enlace;
-        await guardarEnDB(registro);
-      }
-
-      // Enviar la visita completa al servidor.
-      const respuesta = await fetch(URL_SERVIDOR, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: JSON.stringify({
+        const resultado = await solicitarServidor({
           accion: "guardarVisita",
           idToken: idTokenGoogle,
           visita: {
@@ -698,34 +689,33 @@ async function sincronizarPendientes() {
             comparacionFechaFoto:
               registro.comparacionFechaFoto || "NO VERIFICABLE"
           }
-        })
-      });
+        });
 
-      const resultado = await respuesta.json();
+        if (!resultado || !resultado.ok || !resultado.guardado) {
+          throw new Error(
+            resultado?.error ||
+            "El servidor no confirmó el registro."
+          );
+        }
 
-      if (!resultado.ok || !resultado.guardado) {
-        throw new Error(
-          resultado.error || "El servidor no confirmó el registro"
+        await actualizarEstadoEnDB(
+          registro.id,
+          "Sincronizada"
+        );
+
+      } catch (error) {
+        console.error(
+          "No se pudo sincronizar la visita " + registro.id,
+          error
         );
       }
-
-      await actualizarEstadoEnDB(
-        registro.id,
-        "Sincronizada"
-      );
-
-    } catch (error) {
-      console.error(
-        "No se pudo sincronizar la visita " + registro.id,
-        error
-      );
     }
-  }
 
- await mostrarRegistros();
-} finally {
-  sincronizacionEnCurso = false;
-}
+    await mostrarRegistros();
+
+  } finally {
+    sincronizacionEnCurso = false;
+  }
 }
   
   async function migrarRegistrosAntiguos() {
