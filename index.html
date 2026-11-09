@@ -49,6 +49,12 @@
     }
 
     input, select, textarea { background: #fff; }
+    input[readonly], select:disabled {
+      background: #f1f5f9;
+      color: #334155;
+      opacity: 1;
+      cursor: not-allowed;
+    }
 
     button {
       margin-top: 20px;
@@ -232,6 +238,43 @@
   const estado = document.getElementById("estado");
   const lista = document.getElementById("lista");
   const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
+
+  // Recibe los mismos parámetros entry.* que genera el enlace de WhatsApp.
+  const parametrosVisita = new URLSearchParams(window.location.search);
+  const visitaDesdeEnlace = {
+    operador: parametrosVisita.get("entry.51684031") || "",
+    cliente: parametrosVisita.get("entry.1166786524") || "",
+    tipo: parametrosVisita.get("entry.1764256793") || ""
+  };
+  const hayParametrosVisita = Object.values(visitaDesdeEnlace)
+    .some(valor => valor !== "");
+  const enlaceVisitaValido =
+    Boolean(visitaDesdeEnlace.operador.trim()) &&
+    Boolean(visitaDesdeEnlace.cliente.trim()) &&
+    ["Programada", "No programada"].includes(visitaDesdeEnlace.tipo);
+
+  function aplicarParametrosVisita() {
+    if (!enlaceVisitaValido) return;
+
+    document.getElementById("cliente").value = visitaDesdeEnlace.cliente;
+    document.getElementById("operador").value = visitaDesdeEnlace.operador;
+    document.getElementById("tipo").value = visitaDesdeEnlace.tipo;
+
+    document.getElementById("cliente").readOnly = true;
+    document.getElementById("operador").readOnly = true;
+    document.getElementById("tipo").disabled = true;
+  }
+
+  if (enlaceVisitaValido) {
+    aplicarParametrosVisita();
+    document.getElementById("estadoUsuario").textContent =
+      "Visita cargada desde WhatsApp. Cliente, operador y tipo están bloqueados.";
+  } else if (hayParametrosVisita) {
+    document.getElementById("estadoUsuario").textContent =
+      "El enlace de visita está incompleto o contiene datos no válidos. Ábrelo nuevamente desde WhatsApp.";
+    formulario.querySelector('button[type="submit"]').disabled = true;
+  }
+
   let db = null;
   let sincronizacionEnCurso = false;
   
@@ -900,6 +943,7 @@ async function mostrarRegistros() {
         "Visita guardada en este navegador. " + mensajeServidor;
 
       formulario.reset();
+      aplicarParametrosVisita();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
       await mostrarRegistros();
 
