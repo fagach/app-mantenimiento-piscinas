@@ -237,8 +237,6 @@
   
 const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
-const URL_SERVIDOR =
-  "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
 let idTokenGoogle = null;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
@@ -996,6 +994,9 @@ if ("serviceWorker" in navigator) {
 </iframe>
 
 <script>
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+
   const iframePuente = document.getElementById("iframePuente");
 
   let puentePreparado = false;
