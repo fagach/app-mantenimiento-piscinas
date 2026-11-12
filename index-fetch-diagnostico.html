@@ -233,6 +233,8 @@
   const CLAVE = "visitasPiscinasPendientes";
   const DB_NOMBRE = "mantenimientoPiscinasDB";
   const DB_VERSION = 1;
+  // Rama de pruebas: mantener desactivadas las operaciones con datos.
+  const MODO_PRUEBA_COMUNICACION = true;
 
   const formulario = document.getElementById("formulario");
   const estado = document.getElementById("estado");
@@ -277,7 +279,6 @@
 
   let db = null;
   let sincronizacionEnCurso = false;
-  const DIAGNOSTICO_SOLO_LECTURA = true;
   
 const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
@@ -378,14 +379,16 @@ async function recibirCredencialGoogle(respuesta) {
     }
 
     if (perfil.perfil === "Administrador") {
-      panel.hidden = false;
+      panel.hidden = MODO_PRUEBA_COMUNICACION;
       document.getElementById("estadoAutorizacionFotos").textContent =
         "Perfil de administrador confirmado.";
     } else {
       panel.hidden = true;
     }
 
-    await sincronizarPendientes();
+    if (!MODO_PRUEBA_COMUNICACION) {
+      await sincronizarPendientes();
+    }
 
   } catch (error) {
     document.getElementById("autorizacionFotos").hidden = true;
@@ -668,7 +671,10 @@ async function subirFotoDrive(archivo) {
   
 
 async function sincronizarPendientes() {
-  if (DIAGNOSTICO_SOLO_LECTURA) return;
+  if (MODO_PRUEBA_COMUNICACION) {
+    console.info("Modo de prueba: sincronización bloqueada.");
+    return;
+  }
   if (!idTokenGoogle) {
     estado.textContent =
       "Visita guardada localmente. Identifícate con Google para sincronizar.";
@@ -870,8 +876,8 @@ async function mostrarRegistros() {
 
   formulario.addEventListener("submit", async event => {
     event.preventDefault();
-    if (DIAGNOSTICO_SOLO_LECTURA) {
-      estado.textContent = "Modo diagnóstico: el formulario está deshabilitado para proteger los registros locales.";
+    if (MODO_PRUEBA_COMUNICACION) {
+      estado.textContent = "Modo de prueba: el guardado de visitas está deshabilitado.";
       return;
     }
 
@@ -998,12 +1004,29 @@ async function mostrarRegistros() {
     }
   });
 
-  // No se abre IndexedDB ni se migran/modifican registros locales en esta copia.
-  estado.textContent = "Diagnóstico de comunicación: inicia sesión con Google para consultar tu perfil. No se guardarán visitas.";
+  (async () => {
+    if (MODO_PRUEBA_COMUNICACION) {
+      formulario.querySelector('button[type="submit"]').disabled = true;
+      estado.textContent = "Modo de prueba: no se leen ni modifican registros locales; guardado y sincronización deshabilitados.";
+      return;
+    }
+    try {
+      db = await abrirDB();
+      const migrados = await migrarRegistrosAntiguos();
+      await mostrarRegistros();
+      await sincronizarPendientes();
+      estado.textContent = migrados
+        ? `Almacenamiento preparado. Se copiaron ${migrados} registro(s) anteriores.`
+        : "Almacenamiento local preparado. Las nuevas visitas se guardarán en IndexedDB.";
+    } catch (error) {
+      estado.textContent =
+        "No se pudo iniciar el almacenamiento local. No guardes visitas hasta resolverlo.";
+      formulario.querySelector('button[type="submit"]').disabled = true;
+    }
+  })();
 })();
 </script>
   
-
 <div id="contenedorPicker" hidden>
   <iframe
     id="iframePicker"
@@ -1014,15 +1037,14 @@ async function mostrarRegistros() {
   </iframe>
 </div>
   
-
 <script>
-  // Diagnóstico temporal: solo consulta de perfil; no sincroniza ni escribe.
+  // Comunicación directa con Apps Script, validada en la página de diagnóstico.
   const URL_SERVIDOR =
     "https://script.google.com/macros/s/AKfycbzjEy-Ob3XbdAq_STVLVNjaohz5AT0Vw4S3yuAD43VEp1UrRik0l_E59CFSqKFHGejN/exec";
 
   async function solicitarServidor(solicitud) {
-    if (!solicitud || solicitud.accion !== "consultarPerfil") {
-      throw new Error("Esta copia de diagnóstico solo permite consultar el perfil.");
+    if (!solicitud || typeof solicitud.accion !== "string") {
+      throw new Error("La solicitud al servidor no es válida.");
     }
 
     const respuesta = await fetch(URL_SERVIDOR, {
@@ -1033,11 +1055,24 @@ async function mostrarRegistros() {
       body: JSON.stringify(solicitud)
     });
 
-    if (!respuesta.ok) {
-      throw new Error("El servidor respondió con estado HTTP " + respuesta.status + ".");
+    let resultado;
+    try {
+      resultado = await respuesta.json();
+    } catch (error) {
+      throw new Error(
+        "El servidor no devolvió una respuesta JSON válida (HTTP " +
+        respuesta.status + ")."
+      );
     }
 
-    return await respuesta.json();
+    if (!respuesta.ok) {
+      throw new Error(
+        resultado?.error ||
+        "El servidor respondió con estado HTTP " + respuesta.status + "."
+      );
+    }
+
+    return resultado;
   }
 </script>
 
