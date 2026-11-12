@@ -233,6 +233,8 @@
   const CLAVE = "visitasPiscinasPendientes";
   const DB_NOMBRE = "mantenimientoPiscinasDB";
   const DB_VERSION = 1;
+  // Rama de pruebas: mantener desactivadas las operaciones con datos.
+  const MODO_PRUEBA_COMUNICACION = true;
 
   const formulario = document.getElementById("formulario");
   const estado = document.getElementById("estado");
@@ -377,14 +379,16 @@ async function recibirCredencialGoogle(respuesta) {
     }
 
     if (perfil.perfil === "Administrador") {
-      panel.hidden = false;
+      panel.hidden = MODO_PRUEBA_COMUNICACION;
       document.getElementById("estadoAutorizacionFotos").textContent =
         "Perfil de administrador confirmado.";
     } else {
       panel.hidden = true;
     }
 
-    await sincronizarPendientes();
+    if (!MODO_PRUEBA_COMUNICACION) {
+      await sincronizarPendientes();
+    }
 
   } catch (error) {
     document.getElementById("autorizacionFotos").hidden = true;
@@ -667,6 +671,10 @@ async function subirFotoDrive(archivo) {
   
 
 async function sincronizarPendientes() {
+  if (MODO_PRUEBA_COMUNICACION) {
+    console.info("Modo de prueba: sincronización bloqueada.");
+    return;
+  }
   if (!idTokenGoogle) {
     estado.textContent =
       "Visita guardada localmente. Identifícate con Google para sincronizar.";
@@ -868,6 +876,10 @@ async function mostrarRegistros() {
 
   formulario.addEventListener("submit", async event => {
     event.preventDefault();
+    if (MODO_PRUEBA_COMUNICACION) {
+      estado.textContent = "Modo de prueba: el guardado de visitas está deshabilitado.";
+      return;
+    }
 
     let cantidadesValidas = true;
     camposCantidad.forEach(campo => {
@@ -993,6 +1005,11 @@ async function mostrarRegistros() {
   });
 
   (async () => {
+    if (MODO_PRUEBA_COMUNICACION) {
+      formulario.querySelector('button[type="submit"]').disabled = true;
+      estado.textContent = "Modo de prueba: no se leen ni modifican registros locales; guardado y sincronización deshabilitados.";
+      return;
+    }
     try {
       db = await abrirDB();
       const migrados = await migrarRegistrosAntiguos();
@@ -1010,15 +1027,6 @@ async function mostrarRegistros() {
 })();
 </script>
   
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js")
-      .then(() => console.log("Service worker registrado correctamente"))
-      .catch(error => console.error("Error al registrar el service worker:", error));
-  });
-}
-</script>
 <div id="contenedorPicker" hidden>
   <iframe
     id="iframePicker"
