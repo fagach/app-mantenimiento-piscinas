@@ -1,0 +1,1045 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#075985">
+  <title>App Mantenimiento Piscinas</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #172033;
+    }
+
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 22px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 3px 12px #00000012;
+    }
+
+    h1 {
+      margin-top: 0;
+      color: #075985;
+      font-size: 24px;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: bold;
+    }
+
+    input, select, textarea, button {
+      width: 100%;
+      margin-top: 7px;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    input, select, textarea { background: #fff; }
+    input[readonly], select:disabled {
+      background: #f1f5f9;
+      color: #334155;
+      opacity: 1;
+      cursor: not-allowed;
+    }
+
+    button {
+      margin-top: 20px;
+      border: 0;
+      background: #075985;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secondary { background: #475569; }
+
+    .note {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .error {
+      display: none;
+      margin-top: 5px;
+      color: #b91c1c;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .error.visible { display: block; }
+
+    #estado {
+      margin-top: 16px;
+      padding: 12px;
+      background: #e0f2fe;
+      border-radius: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    #lista {
+      padding-left: 20px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Mantenimiento de Piscinas</h1>
+  <div id="accesoGoogle">
+  <p class="note"><strong>Acceso al sistema</strong></p>
+  <div id="botonGoogle"></div>
+  <p id="estadoUsuario" class="note" aria-live="polite">
+    Debes identificarte con tu cuenta de Google para sincronizar visitas.
+  </p>
+</div>
+
+  <div id="autorizacionFotos" hidden>
+  <p class="note"><strong>Administración</strong></p>
+
+  <button
+    type="button"
+    class="secondary"
+    id="btnAutorizarCarpeta">
+    Autorizar carpeta de fotografías
+  </button>
+
+  <p id="estadoAutorizacionFotos" class="note" aria-live="polite"></p>
+</div>
+  
+  <p class="note">
+    Prototipo de prueba. Los registros se guardan en este navegador.
+    Todavía no se envían a Google Sheets.
+  </p>
+
+  
+<form id="formulario">
+  <label for="cliente">Cliente</label>
+  <input id="cliente" name="cliente" type="text"
+         autocomplete="off" required>
+
+  <label for="operador">Operador</label>
+  <input id="operador" name="operador" type="text"
+         autocomplete="off" required>
+
+  <label for="tipo">Tipo de visita</label>
+  <select id="tipo" name="tipo" required>
+    <option value="Programada">Programada</option>
+    <option value="No programada">No programada</option>
+  </select>
+
+  <label>
+    <input type="checkbox" id="aspirada" name="aspirada">
+    Aspirada
+  </label>
+
+  <label>
+    <input type="checkbox" id="cepillada" name="cepillada">
+    Cepillada
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaBordes" name="limpiezaBordes">
+    Limpieza de Bordes
+  </label>
+
+  <label for="cloro">Cloro (Lbs)</label>
+  <input class="cantidad" id="cloro" name="cloro"
+         type="text" inputmode="decimal" placeholder="Ej.: 1,5">
+  <div class="error" id="error-cloro" aria-live="polite"></div>
+
+  <label for="pastilla">Pastilla (Unid)</label>
+  <input class="cantidad" id="pastilla" name="pastilla"
+         type="text" inputmode="decimal" placeholder="Ej.: 1">
+  <div class="error" id="error-pastilla" aria-live="polite"></div>
+
+  <label for="floculante">Floculante (Lts)</label>
+  <input class="cantidad" id="floculante" name="floculante"
+         type="text" inputmode="decimal" placeholder="Ej.: 0,5">
+  <div class="error" id="error-floculante" aria-live="polite"></div>
+
+  <label for="sal">Sal (Kgs)</label>
+  <input class="cantidad" id="sal" name="sal"
+         type="text" inputmode="decimal" placeholder="Ej.: 2,5">
+  <div class="error" id="error-sal" aria-live="polite"></div>
+
+  <label>
+    <input type="checkbox" id="limpiezaFiltro" name="limpiezaFiltro">
+    Limpieza Filtro
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaCuba" name="limpiezaCuba">
+    Limpieza Cuba
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaImpulsor" name="limpiezaImpulsor">
+    Limpieza Impulsor
+  </label>
+
+  <label>
+    <input type="checkbox" id="bombaMantenimiento" name="bombaMantenimiento">
+    Bomba en Mantenimiento
+  </label>
+
+  <label for="novedades">Observaciones</label>
+  <textarea id="novedades" name="novedades" rows="3"></textarea>
+
+  <label for="fotoMantenimiento">Foto Mantenimiento (obligatoria)</label>
+  <input id="fotoMantenimiento" name="fotoMantenimiento"
+         type="file" accept="image/*" capture="environment" required>
+
+  <label for="fotoNovedades">Foto Novedades (opcional)</label>
+  <input id="fotoNovedades" name="fotoNovedades"
+         type="file" accept="image/*" capture="environment">
+
+  <button type="submit">Guardar visita en este dispositivo</button>
+</form>
+
+  <div id="estado" role="status">
+    Todavía no hay visitas guardadas en esta sesión.
+  </div>
+
+  <h2>Visitas guardadas</h2>
+  <p class="note">
+    Registros almacenados localmente en este navegador.
+  </p>
+  <ul id="lista"></ul>
+
+  <button type="button" class="secondary" id="exportar">
+    Exportar registros de prueba (JSON)
+  </button>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const CLAVE = "visitasPiscinasPendientes";
+  const DB_NOMBRE = "mantenimientoPiscinasDB";
+  const DB_VERSION = 1;
+
+  const formulario = document.getElementById("formulario");
+  const estado = document.getElementById("estado");
+  const lista = document.getElementById("lista");
+  const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
+
+  // Recibe los mismos parámetros entry.* que genera el enlace de WhatsApp.
+  const parametrosVisita = new URLSearchParams(window.location.search);
+  const visitaDesdeEnlace = {
+    operador: parametrosVisita.get("entry.51684031") || "",
+    cliente: parametrosVisita.get("entry.1166786524") || "",
+    tipo: parametrosVisita.get("entry.1764256793") || ""
+  };
+  const hayParametrosVisita = Object.values(visitaDesdeEnlace)
+    .some(valor => valor !== "");
+  const enlaceVisitaValido =
+    Boolean(visitaDesdeEnlace.operador.trim()) &&
+    Boolean(visitaDesdeEnlace.cliente.trim()) &&
+    ["Programada", "No programada"].includes(visitaDesdeEnlace.tipo);
+
+  function aplicarParametrosVisita() {
+    if (!enlaceVisitaValido) return;
+
+    document.getElementById("cliente").value = visitaDesdeEnlace.cliente;
+    document.getElementById("operador").value = visitaDesdeEnlace.operador;
+    document.getElementById("tipo").value = visitaDesdeEnlace.tipo;
+
+    document.getElementById("cliente").readOnly = true;
+    document.getElementById("operador").readOnly = true;
+    document.getElementById("tipo").disabled = true;
+  }
+
+  if (enlaceVisitaValido) {
+    aplicarParametrosVisita();
+    document.getElementById("estadoUsuario").textContent =
+      "Visita cargada desde WhatsApp. Cliente, operador y tipo están bloqueados.";
+  } else if (hayParametrosVisita) {
+    document.getElementById("estadoUsuario").textContent =
+      "El enlace de visita está incompleto o contiene datos no válidos. Ábrelo nuevamente desde WhatsApp.";
+    formulario.querySelector('button[type="submit"]').disabled = true;
+  }
+
+  let db = null;
+  let sincronizacionEnCurso = false;
+  const DIAGNOSTICO_SOLO_LECTURA = true;
+  
+const ID_CLIENTE_OAUTH =
+  "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
+let idTokenGoogle = null;
+
+const estadoUsuario = document.getElementById("estadoUsuario");
+
+function iniciarAutorizacionCarpeta() {
+  if (!idTokenGoogle) {
+    estadoUsuario.textContent =
+      "Primero debes identificarte con Google.";
+    return;
+  }
+
+  const contenedor = document.getElementById("contenedorPicker");
+  const iframe = document.getElementById("iframePicker");
+
+  contenedor.hidden = false;
+
+  iframe.src = URL_SERVIDOR + "?selector=1";
+}
+
+document.getElementById("btnAutorizarCarpeta")
+  .addEventListener("click", iniciarAutorizacionCarpeta);
+
+window.addEventListener("message", function(event) {
+  const iframe = document.getElementById("iframePicker");
+
+  if (event.source !== iframe.contentWindow) return;
+
+  let origenConfiable = false;
+
+  try {
+    const host = new URL(event.origin).hostname;
+
+    origenConfiable =
+      event.origin.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com")
+      );
+  } catch (error) {
+    return;
+  }
+
+  if (!origenConfiable) return;
+
+  if (event.data?.tipo === "PICKER_LISTO") {
+    if (!idTokenGoogle) return;
+
+    iframe.contentWindow.postMessage({
+      tipo: "AUTORIZAR_PICKER",
+      idToken: idTokenGoogle
+    }, event.origin);
+  }
+
+  if (event.data?.tipo === "RESULTADO_PICKER") {
+    document.getElementById("estadoAutorizacionFotos").textContent =
+      event.data.ok
+        ? "Carpeta autorizada: " + event.data.nombre
+        : event.data.cancelado
+          ? "Selección cancelada."
+          : "La carpeta seleccionada no es la esperada.";
+
+    if (event.data.ok) {
+      document.getElementById("contenedorPicker").hidden = true;
+    }
+  }
+});
+  
+
+async function recibirCredencialGoogle(respuesta) {
+  if (!respuesta || !respuesta.credential) {
+    estadoUsuario.textContent =
+      "No se pudo completar la identificación de Google.";
+    return;
+  }
+
+  idTokenGoogle = respuesta.credential;
+
+  estadoUsuario.textContent =
+    "Cuenta de Google identificada. Comprobando perfil...";
+
+  try {
+    const perfil = await solicitarServidor({
+      accion: "consultarPerfil",
+      idToken: idTokenGoogle
+    });
+
+    const panel = document.getElementById("autorizacionFotos");
+
+    if (!perfil || !perfil.ok) {
+      panel.hidden = true;
+      estadoUsuario.textContent =
+        perfil?.error || "No se pudo verificar el perfil.";
+      return;
+    }
+
+    if (perfil.perfil === "Administrador") {
+      panel.hidden = false;
+      document.getElementById("estadoAutorizacionFotos").textContent =
+        "Perfil de administrador confirmado.";
+    } else {
+      panel.hidden = true;
+    }
+
+    await sincronizarPendientes();
+
+  } catch (error) {
+    document.getElementById("autorizacionFotos").hidden = true;
+    estadoUsuario.textContent =
+      "No se pudo comprobar el perfil: " + error.message;
+  }
+}
+  
+function inicializarGoogleIdentity() {
+  if (
+    !window.google ||
+    !google.accounts ||
+    !google.accounts.id
+  ) {
+    estadoUsuario.textContent =
+      "No se pudo cargar el servicio de inicio de sesión de Google. Recarga cuando tengas conexión.";
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: ID_CLIENTE_OAUTH,
+    callback: recibirCredencialGoogle,
+    auto_select: false
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById("botonGoogle"),
+    {
+      theme: "outline",
+      size: "large",
+      text: "signin_with",
+      shape: "rectangular",
+      width: 280
+    }
+  );
+}
+
+
+  // Lee la fecha original de captura de una fotografía JPEG (EXIF).
+  async function leerFechaEXIF(archivo) {
+    if (!archivo || !archivo.type || !archivo.type.includes("jpeg")) {
+      return null;
+    }
+
+    try {
+      const buffer = await archivo.arrayBuffer();
+      const datos = new DataView(buffer);
+      const longitud = datos.byteLength;
+
+      if (datos.getUint16(0) !== 0xFFD8) return null;
+
+      let posicion = 2;
+
+      while (posicion + 4 < longitud) {
+        if (datos.getUint8(posicion) !== 0xFF) break;
+
+        const marcador = datos.getUint8(posicion + 1);
+        const tamano = datos.getUint16(posicion + 2);
+
+        if (tamano < 2 || posicion + 2 + tamano > longitud) break;
+
+        if (marcador === 0xE1) {
+          const inicio = posicion + 4;
+
+          if (
+            datos.getUint8(inicio) !== 0x45 ||
+            datos.getUint8(inicio + 1) !== 0x78 ||
+            datos.getUint8(inicio + 2) !== 0x69 ||
+            datos.getUint8(inicio + 3) !== 0x66
+          ) break;
+
+          const tiff = inicio + 6;
+          const orden = datos.getUint16(tiff);
+
+          const littleEndian = orden === 0x4949;
+          if (!littleEndian && orden !== 0x4D4D) return null;
+
+          if (datos.getUint16(tiff + 2, littleEndian) !== 42) return null;
+
+          const leerIFD = (desplazamiento) => {
+            const inicioIFD = tiff + desplazamiento;
+            const cantidad = datos.getUint16(inicioIFD, littleEndian);
+            const etiquetas = {};
+
+            for (let i = 0; i < cantidad; i++) {
+              const entrada = inicioIFD + 2 + i * 12;
+              const etiqueta = datos.getUint16(entrada, littleEndian);
+              etiquetas[etiqueta] = entrada;
+            }
+
+            return etiquetas;
+          };
+
+          const desplazamientoIFD0 =
+            datos.getUint32(tiff + 4, littleEndian);
+
+          const ifd0 = leerIFD(desplazamientoIFD0);
+          const etiquetaExif = ifd0[0x8769];
+
+          if (!etiquetaExif) return null;
+
+          const desplazamientoExif =
+            datos.getUint32(etiquetaExif + 8, littleEndian);
+
+          const ifdExif = leerIFD(desplazamientoExif);
+          const etiquetaFecha = ifdExif[0x9003];
+
+          if (!etiquetaFecha) return null;
+
+          const entrada = etiquetaFecha;
+          const tipo = datos.getUint16(entrada + 2, littleEndian);
+          const cantidad = datos.getUint32(entrada + 4, littleEndian);
+
+          if (tipo !== 2 || cantidad < 19) return null;
+
+          const desplazamiento =
+            datos.getUint32(entrada + 8, littleEndian);
+
+          const inicioTexto = tiff + desplazamiento;
+
+          if (inicioTexto + cantidad > longitud) return null;
+
+          let fecha = "";
+
+          for (let i = 0; i < cantidad - 1; i++) {
+            fecha += String.fromCharCode(
+              datos.getUint8(inicioTexto + i)
+            );
+          }
+
+          return /^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/.test(fecha)
+            ? fecha
+            : null;
+        }
+
+        posicion += 2 + tamano;
+      }
+
+      return null;
+
+    } catch (error) {
+      console.warn("No se pudo leer la fecha EXIF:", error);
+      return null;
+    }
+  }
+
+  
+  function compararFechaFoto(fechaEXIF, fechaVisita) {
+    if (!fechaEXIF || !fechaVisita) {
+      return "NO VERIFICABLE";
+    }
+
+    const fechaCaptura = fechaEXIF.substring(0, 10).replace(/:/g, "-");
+
+    const fechaEcuador = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Guayaquil",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date(fechaVisita));
+
+    return fechaCaptura === fechaEcuador
+      ? "COINCIDE"
+      : "FECHA DIFERENTE";
+  }
+ 
+  
+  function abrirDB() {
+    return new Promise((resolve, reject) => {
+      const solicitud = indexedDB.open(DB_NOMBRE, DB_VERSION);
+
+      solicitud.onupgradeneeded = () => {
+        const base = solicitud.result;
+        if (!base.objectStoreNames.contains("visitas")) {
+          base.createObjectStore("visitas", { keyPath: "id" });
+        }
+      };
+      solicitud.onsuccess = () => resolve(solicitud.result);
+      solicitud.onerror = () => reject(solicitud.error);
+    });
+  }
+
+  function leerRegistrosAntiguos() {
+    try {
+      const datos = JSON.parse(localStorage.getItem(CLAVE) || "[]");
+      return Array.isArray(datos) ? datos : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function obtenerTodas() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readonly");
+      const solicitud = tx.objectStore("visitas").getAll();
+      solicitud.onsuccess = () => resolve(solicitud.result || []);
+      solicitud.onerror = () => reject(solicitud.error);
+    });
+  }
+
+  function guardarEnDB(registro) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readwrite");
+      tx.objectStore("visitas").put(registro);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transacción cancelada"));
+    });
+  }
+  function actualizarEstadoEnDB(id, nuevoEstado) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readwrite");
+      const almacen = tx.objectStore("visitas");
+      const solicitud = almacen.get(id);
+
+      solicitud.onsuccess = () => {
+        const registro = solicitud.result;
+
+        if (!registro) {
+          reject(new Error("No se encontró el registro"));
+          tx.abort();
+          return;
+        }
+
+        registro.estado = nuevoEstado;
+        almacen.put(registro);
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transacción cancelada"));
+    });
+  }
+
+  
+function convertirFotoBase64(archivo) {
+  return new Promise((resolve, reject) => {
+    if (!archivo) {
+      resolve(null);
+      return;
+    }
+
+    const lector = new FileReader();
+
+    lector.onload = () => resolve(lector.result);
+    lector.onerror = () => reject(
+      new Error("No se pudo leer la fotografía")
+    );
+
+    lector.readAsDataURL(archivo);
+  });
+}
+
+  
+
+async function subirFotoDrive(archivo) {
+  if (!archivo) return "";
+
+  const datosBase64 = await convertirFotoBase64(archivo);
+
+  const resultado = await solicitarServidor({
+    accion: "guardarFoto",
+    idToken: idTokenGoogle,
+    datosBase64: datosBase64,
+    nombreOriginal: archivo.name,
+    tipoMime: archivo.type
+  });
+
+  if (!resultado || !resultado.ok ||
+      !resultado.foto || !resultado.foto.enlace) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no confirmó el guardado de la fotografía."
+    );
+  }
+
+  return resultado.foto.enlace;
+}
+   
+  
+
+async function sincronizarPendientes() {
+  if (DIAGNOSTICO_SOLO_LECTURA) return;
+  if (!idTokenGoogle) {
+    estado.textContent =
+      "Visita guardada localmente. Identifícate con Google para sincronizar.";
+    return;
+  }
+
+  if (sincronizacionEnCurso) return;
+  sincronizacionEnCurso = true;
+
+  try {
+    if (!navigator.onLine) return;
+
+    const registros = await obtenerTodas();
+
+    const pendientes = registros.filter(
+      registro => registro.estado === "Pendiente de sincronización"
+    );
+
+    for (let registro of pendientes) {
+      try {
+        const fotoMantenimiento =
+          registro.fotoMantenimiento || registro.foto || null;
+
+        if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
+          const enlace = await subirFotoDrive(fotoMantenimiento);
+          registro.enlaceFotoMantenimiento = enlace;
+          await guardarEnDB(registro);
+        }
+
+        if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
+          const enlace = await subirFotoDrive(registro.fotoNovedades);
+          registro.enlaceFotoNovedades = enlace;
+          await guardarEnDB(registro);
+        }
+
+        const resultado = await solicitarServidor({
+          accion: "guardarVisita",
+          idToken: idTokenGoogle,
+          visita: {
+            id: registro.id,
+            fecha: registro.fecha,
+            cliente: registro.cliente,
+            operador: registro.operador,
+            tipo: registro.tipo,
+            aspirada: registro.aspirada,
+            cepillada: registro.cepillada,
+            limpiezaBordes: registro.limpiezaBordes,
+            cloro: registro.cloro,
+            pastilla: registro.pastilla,
+            floculante: registro.floculante,
+            sal: registro.sal,
+            limpiezaFiltro: registro.limpiezaFiltro,
+            limpiezaCuba: registro.limpiezaCuba,
+            limpiezaImpulsor: registro.limpiezaImpulsor,
+            bombaMantenimiento: registro.bombaMantenimiento,
+            observaciones: registro.novedades,
+            fotoMantenimiento: registro.enlaceFotoMantenimiento || "",
+            fotoNovedades: registro.enlaceFotoNovedades || "",
+            correo: registro.correo || "",
+            fechaEXIFMantenimiento:
+              registro.fechaEXIFMantenimiento || "",
+            comparacionFechaFoto:
+              registro.comparacionFechaFoto || "NO VERIFICABLE"
+          }
+        });
+
+        if (!resultado || !resultado.ok || !resultado.guardado) {
+          throw new Error(
+            resultado?.error ||
+            "El servidor no confirmó el registro."
+          );
+        }
+
+        await actualizarEstadoEnDB(
+          registro.id,
+          "Sincronizada"
+        );
+
+      } catch (error) {
+        console.error(
+          "No se pudo sincronizar la visita " + registro.id,
+          error
+        );
+      }
+    }
+
+    await mostrarRegistros();
+
+  } finally {
+    sincronizacionEnCurso = false;
+  }
+}
+  
+  async function migrarRegistrosAntiguos() {
+    const antiguos = leerRegistrosAntiguos();
+    if (!antiguos.length) return 0;
+
+    const actuales = await obtenerTodas();
+    const ids = new Set(actuales.map(registro => registro.id));
+    let migrados = 0;
+
+    for (const registro of antiguos) {
+      if (!registro || !registro.id || ids.has(registro.id)) continue;
+      await guardarEnDB(registro);
+      ids.add(registro.id);
+      migrados++;
+    }
+    return migrados;
+  }
+  window.addEventListener("load", inicializarGoogleIdentity);
+  window.addEventListener("online", () => {
+    sincronizarPendientes();
+  });
+  
+  
+async function mostrarRegistros() {
+  lista.replaceChildren();
+
+  const registros = (await obtenerTodas()).sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  );
+
+  if (registros.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "Todavía no hay visitas guardadas.";
+    lista.appendChild(li);
+    return;
+  }
+
+  registros.forEach(registro => {
+    const li = document.createElement("li");
+    const fecha = new Date(registro.fecha).toLocaleString("es-EC");
+
+    const tieneFotoMantenimiento =
+      registro.fotoMantenimiento instanceof Blob ||
+      registro.foto instanceof Blob;
+
+    const tieneFotoNovedades =
+      registro.fotoNovedades instanceof Blob;
+
+    const estadoFoto = registro.comparacionFechaFoto
+      ? ` — Fecha foto: ${registro.comparacionFechaFoto}`
+      : "";
+
+    li.textContent =
+      `${registro.cliente} — ${registro.tipo} — ${fecha} — ` +
+      `${registro.estado}` +
+      `${tieneFotoMantenimiento ? " — Foto mantenimiento guardada" : ""}` +
+      `${tieneFotoNovedades ? " — Foto novedades guardada" : ""}` +
+      estadoFoto;
+
+    lista.appendChild(li);
+  });
+}
+
+  function mostrarError(campo, mensaje) {
+    const error = document.getElementById("error-" + campo.id);
+    if (!error) return;
+    error.textContent = mensaje;
+    error.classList.toggle("visible", mensaje !== "");
+    campo.setAttribute("aria-invalid", mensaje ? "true" : "false");
+  }
+
+  function validarCantidad(campo) {
+    const valor = campo.value.trim();
+
+    if (valor === "") {
+      mostrarError(campo, "");
+      return true;
+    }
+
+    if (!/^\d+(,\d+)?$/.test(valor)) {
+      mostrarError(
+        campo,
+        "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
+      );
+      return false;
+    }
+
+    mostrarError(campo, "");
+    return true;
+  }
+
+  camposCantidad.forEach(campo => {
+    campo.addEventListener("input", () => {
+      if (campo.value.includes(".")) {
+        campo.value = campo.value.replace(/\./g, "");
+        mostrarError(
+          campo,
+          "No se permite el punto decimal. Usa coma, por ejemplo: 1,5."
+        );
+      } else {
+        validarCantidad(campo);
+      }
+    });
+
+    campo.addEventListener("blur", () => validarCantidad(campo));
+  });
+
+  formulario.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (DIAGNOSTICO_SOLO_LECTURA) {
+      estado.textContent = "Modo diagnóstico: el formulario está deshabilitado para proteger los registros locales.";
+      return;
+    }
+
+    let cantidadesValidas = true;
+    camposCantidad.forEach(campo => {
+      if (!validarCantidad(campo)) cantidadesValidas = false;
+    });
+
+    if (!cantidadesValidas) {
+      estado.textContent = "Revisa las cantidades marcadas antes de guardar.";
+      return;
+    }
+
+    const fotoMantenimiento =
+      document.getElementById("fotoMantenimiento").files[0] || null;
+
+    const fotoNovedades =
+      document.getElementById("fotoNovedades").files[0] || null;
+    
+    const fechaVisita = new Date().toISOString();
+       
+    const registro = {
+      id: (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
+      fecha: fechaVisita,
+      cliente: document.getElementById("cliente").value.trim(),
+      operador: document.getElementById("operador").value.trim(),
+      tipo: document.getElementById("tipo").value,
+      aspirada: document.getElementById("aspirada").checked ? "Sí" : "",
+      cepillada: document.getElementById("cepillada").checked ? "Sí" : "",
+      limpiezaBordes: document.getElementById("limpiezaBordes").checked ? "Sí" : "",
+      limpiezaFiltro: document.getElementById("limpiezaFiltro").checked ? "Sí" : "",
+      limpiezaCuba: document.getElementById("limpiezaCuba").checked ? "Sí" : "",
+      limpiezaImpulsor: document.getElementById("limpiezaImpulsor").checked ? "Sí" : "",
+      bombaMantenimiento: document.getElementById("bombaMantenimiento").checked ? "Sí" : "",
+      cloro: document.getElementById("cloro").value.trim(),
+      pastilla: document.getElementById("pastilla").value.trim(),
+      floculante: document.getElementById("floculante").value.trim(),
+      sal: document.getElementById("sal").value.trim(),
+      novedades: document.getElementById("novedades").value.trim(),
+      estado: "Pendiente de sincronización",
+      fotoMantenimiento: fotoMantenimiento,
+      fotoNovedades: fotoNovedades,
+      fechaEXIFMantenimiento: null,
+      comparacionFechaFoto: "NO VERIFICABLE"
+    };
+
+        try {
+      await guardarEnDB(registro);
+
+      registro.fechaEXIFMantenimiento = fotoMantenimiento
+      ? await leerFechaEXIF(fotoMantenimiento)
+      : null;
+
+      registro.comparacionFechaFoto = compararFechaFoto(
+      registro.fechaEXIFMantenimiento,
+      fechaVisita
+    );
+
+    await guardarEnDB(registro);    
+      
+      
+      const mensajeServidor = "Pendiente de sincronización con el servidor.";
+
+      estado.textContent =
+        "Visita guardada en este navegador. " + mensajeServidor;
+
+      // Iniciar la sincronización sin detener el formulario.
+      sincronizarPendientes().catch(error => {
+        console.error("Error en la sincronización:", error);
+      });
+
+      estado.textContent =
+        "Visita guardada en este navegador. " + mensajeServidor;
+
+      formulario.reset();
+      aplicarParametrosVisita();
+      camposCantidad.forEach(campo => mostrarError(campo, ""));
+      await mostrarRegistros();
+
+    
+    } catch (error) {
+      estado.textContent =
+        "No se pudo guardar. Comprueba el espacio disponible del navegador e inténtalo de nuevo.";
+    }
+  });
+
+  document.getElementById("exportar").addEventListener("click", async () => {
+    try {
+      const registros = await obtenerTodas();
+     const salida = registros.map(registro => {
+  const copia = { ...registro };
+
+  ["fotoMantenimiento", "fotoNovedades", "foto"].forEach(campo => {
+    const foto = copia[campo];
+
+    if (foto instanceof Blob) {
+      copia[campo] = {
+        almacenada: true,
+        tipo: foto.type,
+        tamanoBytes: foto.size,
+        nota: "La imagen permanece en IndexedDB; este JSON no contiene sus datos binarios."
+      };
+    }
+  });
+
+  return copia;
+});
+      const archivo = new Blob(
+        [JSON.stringify(salida, null, 2)],
+        { type: "application/json;charset=utf-8" }
+      );
+      const url = URL.createObjectURL(archivo);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = "visitas-piscinas-prueba.json";
+      enlace.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      estado.textContent =
+        "Se exportó el listado. Las fotos siguen guardadas en este navegador y no se incluyen en el JSON.";
+    } catch (error) {
+      estado.textContent = "No se pudieron exportar los registros.";
+    }
+  });
+
+  // No se abre IndexedDB ni se migran/modifican registros locales en esta copia.
+  estado.textContent = "Diagnóstico de comunicación: inicia sesión con Google para consultar tu perfil. No se guardarán visitas.";
+})();
+</script>
+  
+
+<div id="contenedorPicker" hidden>
+  <iframe
+    id="iframePicker"
+    title="Autorización de carpeta de fotografías"
+    width="100%"
+    height="550"
+    frameborder="0">
+  </iframe>
+</div>
+  
+
+<script>
+  // Diagnóstico temporal: solo consulta de perfil; no sincroniza ni escribe.
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbzjEy-Ob3XbdAq_STVLVNjaohz5AT0w4S3yuAD43VEp1UrRik0l_E59CFSqKFHGejN/exec";
+
+  async function solicitarServidor(solicitud) {
+    if (!solicitud || solicitud.accion !== "consultarPerfil") {
+      throw new Error("Esta copia de diagnóstico solo permite consultar el perfil.");
+    }
+
+    const respuesta = await fetch(URL_SERVIDOR, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(solicitud)
+    });
+
+    if (!respuesta.ok) {
+      throw new Error("El servidor respondió con estado HTTP " + respuesta.status + ".");
+    }
+
+    return await respuesta.json();
+  }
+</script>
+
+</body>
+</html>
