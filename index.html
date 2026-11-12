@@ -1044,6 +1044,7 @@ if ("serviceWorker" in navigator) {
   const iframePuente = document.getElementById("iframePuente");
 
   let puentePreparado = false;
+  let origenPuente = null;
   let contadorSolicitudes = 0;
   const solicitudesPendientes = new Map();
 
@@ -1062,14 +1063,50 @@ if ("serviceWorker" in navigator) {
     }
   }
 
+  function obtenerMarcoPuente() {
+    try {
+      return iframePuente.contentWindow.frames[0] || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function iniciarHandshake() {
+    puentePreparado = false;
+    origenPuente = null;
+
+    const inicio = Date.now();
+
+    while (!puentePreparado && Date.now() - inicio < 30000) {
+      const marco = obtenerMarcoPuente();
+
+      if (marco) {
+        // Este mensaje inicial no contiene credenciales ni datos privados.
+        marco.postMessage({ tipo: "INICIAR_PUENTE" }, "*");
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    if (!puentePreparado) {
+      console.error("El puente no completó el saludo inicial.");
+    }
+  }
+
   window.addEventListener("message", function(event) {
-    if (event.source !== iframePuente.contentWindow) return;
+    const marco = obtenerMarcoPuente();
+
+    if (!marco || event.source !== marco) return;
     if (!origenServidorConfiable(event.origin)) return;
 
     if (event.data?.tipo === "PUENTE_LISTO") {
+      origenPuente = event.origin;
       puentePreparado = true;
+      console.log("Puente directo preparado:", origenPuente);
       return;
     }
+
+    if (event.origin !== origenPuente) return;
 
     if (event.data?.tipo === "RESPUESTA_SERVIDOR") {
       const pendiente = solicitudesPendientes.get(
@@ -1084,6 +1121,7 @@ if ("serviceWorker" in navigator) {
     }
   });
 
+  iframePuente.addEventListener("load", iniciarHandshake);
   iframePuente.src = URL_SERVIDOR;
 
   async function solicitarServidor(solicitud) {
@@ -1095,6 +1133,12 @@ if ("serviceWorker" in navigator) {
       }
 
       await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    const marco = obtenerMarcoPuente();
+
+    if (!marco || !origenPuente) {
+      throw new Error("No está disponible el marco seguro del puente.");
     }
 
     const idSolicitud =
@@ -1111,11 +1155,12 @@ if ("serviceWorker" in navigator) {
         temporizador: temporizador
       });
 
-      iframePuente.contentWindow.postMessage({
+      // Las solicitudes, incluido el token de Google, usan el origen exacto.
+      marco.postMessage({
         tipo: "SOLICITUD_SERVIDOR",
         idSolicitud: idSolicitud,
         solicitud: solicitud
-      }, "*");
+      }, origenPuente);
     });
   }
 </script>
