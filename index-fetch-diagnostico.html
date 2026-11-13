@@ -329,6 +329,13 @@ let ventanaSelectorAutorizada = null;
 window.addEventListener("message", function(event) {
   const estadoFotos = document.getElementById("estadoAutorizacionFotos");
 
+  // Diagnóstico temporal: muestra origen y tipo, nunca credenciales ni tokens.
+  const tipoDiagnostico = event.data && typeof event.data === "object"
+    ? event.data.tipo
+    : typeof event.data;
+  estadoFotos.textContent =
+    "Mensaje recibido: origen=" + event.origin + " | tipo=" + String(tipoDiagnostico || "sin tipo");
+
   // Apps Script puede insertar un marco intermedio. El selector avisa a window.top;
   // por eso se valida el origen y se responde a la ventana que envió el mensaje.
   let origenConfiable = false;
