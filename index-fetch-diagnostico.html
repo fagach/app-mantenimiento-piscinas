@@ -324,33 +324,17 @@ function iniciarAutorizacionCarpeta() {
 document.getElementById("btnAutorizarCarpeta")
   .addEventListener("click", iniciarAutorizacionCarpeta);
 
+let ventanaSelectorAutorizada = null;
+
 window.addEventListener("message", function(event) {
-  const iframe = document.getElementById("iframePicker");
   const estadoFotos = document.getElementById("estadoAutorizacionFotos");
 
-  // Diagnóstico temporal: mostrar el origen y tipo sin exponer credenciales.
-  const tipoMensaje =
-    event.data && typeof event.data === "object" && typeof event.data.tipo === "string"
-      ? event.data.tipo
-      : "mensaje sin tipo";
-  estadoFotos.textContent =
-    "Diagnóstico: mensaje recibido (" + tipoMensaje +
-    "). Origen: " + event.origin +
-    ". ¿Es el iframe?: " + (event.source === iframe.contentWindow ? "sí" : "no") + ".";
-
-  if (event.source !== iframe.contentWindow) {
-    if (event.origin.includes("google")) {
-      estadoFotos.textContent =
-        "Diagnóstico: llegó un mensaje de Google, pero no directamente del iframe esperado.";
-    }
-    return;
-  }
-
+  // Apps Script puede insertar un marco intermedio. El selector avisa a window.top;
+  // por eso se valida el origen y se responde a la ventana que envió el mensaje.
   let origenConfiable = false;
 
   try {
     const host = new URL(event.origin).hostname;
-
     origenConfiable =
       event.origin.startsWith("https://") &&
       (
@@ -359,43 +343,48 @@ window.addEventListener("message", function(event) {
         host.endsWith(".script.googleusercontent.com")
       );
   } catch (error) {
-    estadoFotos.textContent = "Diagnóstico: el origen del mensaje no se pudo interpretar.";
     return;
   }
 
-  if (!origenConfiable) {
-    estadoFotos.textContent =
-      "Diagnóstico: mensaje recibido desde un origen no permitido (" + event.origin + ").";
-    return;
-  }
+  if (!origenConfiable || !event.data || typeof event.data !== "object") return;
 
-  if (event.data?.tipo === "PICKER_LISTO") {
+  const tipoMensaje = event.data.tipo;
+  if (tipoMensaje !== "PICKER_LISTO" && tipoMensaje !== "RESULTADO_PICKER") return;
+
+  if (tipoMensaje === "PICKER_LISTO") {
     if (!idTokenGoogle) {
       estadoFotos.textContent =
-        "Diagnóstico: llegó PICKER_LISTO, pero no hay una sesión de Google disponible.";
+        "El selector avisó que está listo, pero no hay una sesión de Google disponible.";
       return;
     }
 
+    ventanaSelectorAutorizada = event.source;
     estadoFotos.textContent =
-      "Diagnóstico: PICKER_LISTO recibido. Enviando autorización al selector...";
+      "Selector conectado. Enviando autorización de Google...";
 
-    iframe.contentWindow.postMessage({
+    event.source.postMessage({
       tipo: "AUTORIZAR_PICKER",
       idToken: idTokenGoogle
     }, event.origin);
+    return;
   }
 
-  if (event.data?.tipo === "RESULTADO_PICKER") {
+  if (event.source !== ventanaSelectorAutorizada) {
     estadoFotos.textContent =
-      event.data.ok
-        ? "Carpeta autorizada: " + event.data.nombre
-        : event.data.cancelado
-          ? "Selección cancelada."
-          : "La carpeta seleccionada no es la esperada.";
+      "Se recibió un resultado desde una ventana distinta del selector autorizado.";
+    return;
+  }
 
-    if (event.data.ok) {
-      document.getElementById("contenedorPicker").hidden = true;
-    }
+  estadoFotos.textContent =
+    event.data.ok
+      ? "Carpeta autorizada: " + String(event.data.nombre || "")
+      : event.data.cancelado
+        ? "Selección cancelada."
+        : "La carpeta seleccionada no es la esperada.";
+
+  if (event.data.ok) {
+    document.getElementById("contenedorPicker").hidden = true;
+    ventanaSelectorAutorizada = null;
   }
 });
   
