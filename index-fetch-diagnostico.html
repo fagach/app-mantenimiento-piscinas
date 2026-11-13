@@ -426,8 +426,24 @@ async function recibirCredencialGoogle(respuesta) {
 
     if (perfil.perfil === "Administrador") {
       panel.hidden = false; // Visible para probar Picker; el modo prueba sigue bloqueando escrituras.
-      document.getElementById("estadoAutorizacionFotos").textContent =
-        "Perfil de administrador confirmado.";
+      const estadoFotos = document.getElementById("estadoAutorizacionFotos");
+      estadoFotos.textContent = "Perfil de administrador confirmado. Consultando autorización de carpeta...";
+
+      const estadoCarpeta = await solicitarServidor({
+        accion: "consultarCarpetaFotos",
+        idToken: idTokenGoogle
+      });
+
+      if (!estadoCarpeta || !estadoCarpeta.ok) {
+        estadoFotos.textContent =
+          estadoCarpeta?.error || "No se pudo consultar la autorización de la carpeta.";
+      } else if (estadoCarpeta.autorizada) {
+        estadoFotos.textContent =
+          "Carpeta autorizada: " + String(estadoCarpeta.nombre || "Fotos PWA Piscinas");
+      } else {
+        estadoFotos.textContent =
+          "La carpeta de fotografías todavía no está autorizada.";
+      }
     } else {
       panel.hidden = true;
     }
