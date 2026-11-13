@@ -297,18 +297,28 @@ let idTokenGoogle = null;
 const estadoUsuario = document.getElementById("estadoUsuario");
 
 function iniciarAutorizacionCarpeta() {
-  if (!idTokenGoogle) {
-    estadoUsuario.textContent =
-      "Primero debes identificarte con Google.";
-    return;
-  }
-
+  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
   const contenedor = document.getElementById("contenedorPicker");
   const iframe = document.getElementById("iframePicker");
 
+  estadoFotos.textContent = "Clic recibido. Preparando selector...";
   contenedor.hidden = false;
 
-  iframe.src = URL_SERVIDOR + "?selector=1";
+  if (!idTokenGoogle) {
+    estadoFotos.textContent =
+      "El clic llegó, pero primero debes identificarte con Google.";
+    return;
+  }
+
+  try {
+    iframe.src = URL_SERVIDOR + "?selector=1";
+    estadoFotos.textContent =
+      "Clic recibido. Cargando el selector de carpetas de Google...";
+  } catch (error) {
+    estadoFotos.textContent =
+      "El clic llegó, pero no se pudo iniciar el selector: " +
+      (error?.message || String(error));
+  }
 }
 
 document.getElementById("btnAutorizarCarpeta")
