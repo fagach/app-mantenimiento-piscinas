@@ -328,6 +328,16 @@ window.addEventListener("message", function(event) {
   const iframe = document.getElementById("iframePicker");
   const estadoFotos = document.getElementById("estadoAutorizacionFotos");
 
+  // Diagnóstico temporal: mostrar el origen y tipo sin exponer credenciales.
+  const tipoMensaje =
+    event.data && typeof event.data === "object" && typeof event.data.tipo === "string"
+      ? event.data.tipo
+      : "mensaje sin tipo";
+  estadoFotos.textContent =
+    "Diagnóstico: mensaje recibido (" + tipoMensaje +
+    "). Origen: " + event.origin +
+    ". ¿Es el iframe?: " + (event.source === iframe.contentWindow ? "sí" : "no") + ".";
+
   if (event.source !== iframe.contentWindow) {
     if (event.origin.includes("google")) {
       estadoFotos.textContent =
