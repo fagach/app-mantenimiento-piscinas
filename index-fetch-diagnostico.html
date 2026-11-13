@@ -326,8 +326,15 @@ document.getElementById("btnAutorizarCarpeta")
 
 window.addEventListener("message", function(event) {
   const iframe = document.getElementById("iframePicker");
+  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
 
-  if (event.source !== iframe.contentWindow) return;
+  if (event.source !== iframe.contentWindow) {
+    if (event.origin.includes("google")) {
+      estadoFotos.textContent =
+        "Diagnóstico: llegó un mensaje de Google, pero no directamente del iframe esperado.";
+    }
+    return;
+  }
 
   let origenConfiable = false;
 
@@ -342,13 +349,25 @@ window.addEventListener("message", function(event) {
         host.endsWith(".script.googleusercontent.com")
       );
   } catch (error) {
+    estadoFotos.textContent = "Diagnóstico: el origen del mensaje no se pudo interpretar.";
     return;
   }
 
-  if (!origenConfiable) return;
+  if (!origenConfiable) {
+    estadoFotos.textContent =
+      "Diagnóstico: mensaje recibido desde un origen no permitido (" + event.origin + ").";
+    return;
+  }
 
   if (event.data?.tipo === "PICKER_LISTO") {
-    if (!idTokenGoogle) return;
+    if (!idTokenGoogle) {
+      estadoFotos.textContent =
+        "Diagnóstico: llegó PICKER_LISTO, pero no hay una sesión de Google disponible.";
+      return;
+    }
+
+    estadoFotos.textContent =
+      "Diagnóstico: PICKER_LISTO recibido. Enviando autorización al selector...";
 
     iframe.contentWindow.postMessage({
       tipo: "AUTORIZAR_PICKER",
@@ -357,7 +376,7 @@ window.addEventListener("message", function(event) {
   }
 
   if (event.data?.tipo === "RESULTADO_PICKER") {
-    document.getElementById("estadoAutorizacionFotos").textContent =
+    estadoFotos.textContent =
       event.data.ok
         ? "Carpeta autorizada: " + event.data.nombre
         : event.data.cancelado
