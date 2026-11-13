@@ -347,7 +347,8 @@ window.addEventListener("message", function(event) {
       (
         host === "script.google.com" ||
         host === "script.googleusercontent.com" ||
-        host.endsWith(".script.googleusercontent.com")
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
       );
   } catch (error) {
     return;
