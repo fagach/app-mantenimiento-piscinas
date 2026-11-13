@@ -379,7 +379,7 @@ async function recibirCredencialGoogle(respuesta) {
     }
 
     if (perfil.perfil === "Administrador") {
-      panel.hidden = MODO_PRUEBA_COMUNICACION;
+      panel.hidden = false; // Visible para probar Picker; el modo prueba sigue bloqueando escrituras.
       document.getElementById("estadoAutorizacionFotos").textContent =
         "Perfil de administrador confirmado.";
     } else {
