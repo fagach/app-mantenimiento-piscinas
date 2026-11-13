@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#075985">
   <title>App Mantenimiento Piscinas</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     * { box-sizing: border-box; }
 
@@ -48,6 +49,12 @@
     }
 
     input, select, textarea { background: #fff; }
+    input[readonly], select:disabled {
+      background: #f1f5f9;
+      color: #334155;
+      opacity: 1;
+      cursor: not-allowed;
+    }
 
     button {
       margin-top: 20px;
@@ -93,7 +100,27 @@
 <body>
 <main>
   <h1>Mantenimiento de Piscinas</h1>
+  <div id="accesoGoogle">
+  <p class="note"><strong>Acceso al sistema</strong></p>
+  <div id="botonGoogle"></div>
+  <p id="estadoUsuario" class="note" aria-live="polite">
+    Debes identificarte con tu cuenta de Google para sincronizar visitas.
+  </p>
+</div>
 
+  <div id="autorizacionFotos" hidden>
+  <p class="note"><strong>Administración</strong></p>
+
+  <button
+    type="button"
+    class="secondary"
+    id="btnAutorizarCarpeta">
+    Autorizar carpeta de fotografías
+  </button>
+
+  <p id="estadoAutorizacionFotos" class="note" aria-live="polite"></p>
+</div>
+  
   <p class="note">
     Prototipo de prueba. Los registros se guardan en este navegador.
     Todavía no se envían a Google Sheets.
@@ -211,8 +238,190 @@
   const estado = document.getElementById("estado");
   const lista = document.getElementById("lista");
   const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
+
+  // Recibe los mismos parámetros entry.* que genera el enlace de WhatsApp.
+  const parametrosVisita = new URLSearchParams(window.location.search);
+  const visitaDesdeEnlace = {
+    operador: parametrosVisita.get("entry.51684031") || "",
+    cliente: parametrosVisita.get("entry.1166786524") || "",
+    tipo: parametrosVisita.get("entry.1764256793") || ""
+  };
+  const hayParametrosVisita = Object.values(visitaDesdeEnlace)
+    .some(valor => valor !== "");
+  const enlaceVisitaValido =
+    Boolean(visitaDesdeEnlace.operador.trim()) &&
+    Boolean(visitaDesdeEnlace.cliente.trim()) &&
+    ["Programada", "No programada"].includes(visitaDesdeEnlace.tipo);
+
+  function aplicarParametrosVisita() {
+    if (!enlaceVisitaValido) return;
+
+    document.getElementById("cliente").value = visitaDesdeEnlace.cliente;
+    document.getElementById("operador").value = visitaDesdeEnlace.operador;
+    document.getElementById("tipo").value = visitaDesdeEnlace.tipo;
+
+    document.getElementById("cliente").readOnly = true;
+    document.getElementById("operador").readOnly = true;
+    document.getElementById("tipo").disabled = true;
+  }
+
+  if (enlaceVisitaValido) {
+    aplicarParametrosVisita();
+    document.getElementById("estadoUsuario").textContent =
+      "Visita cargada desde WhatsApp. Cliente, operador y tipo están bloqueados.";
+  } else if (hayParametrosVisita) {
+    document.getElementById("estadoUsuario").textContent =
+      "El enlace de visita está incompleto o contiene datos no válidos. Ábrelo nuevamente desde WhatsApp.";
+    formulario.querySelector('button[type="submit"]').disabled = true;
+  }
+
   let db = null;
   let sincronizacionEnCurso = false;
+  
+const ID_CLIENTE_OAUTH =
+  "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
+let idTokenGoogle = null;
+
+const estadoUsuario = document.getElementById("estadoUsuario");
+
+function iniciarAutorizacionCarpeta() {
+  if (!idTokenGoogle) {
+    estadoUsuario.textContent =
+      "Primero debes identificarte con Google.";
+    return;
+  }
+
+  const contenedor = document.getElementById("contenedorPicker");
+  const iframe = document.getElementById("iframePicker");
+
+  contenedor.hidden = false;
+
+  iframe.src = URL_SERVIDOR + "?selector=1";
+}
+
+document.getElementById("btnAutorizarCarpeta")
+  .addEventListener("click", iniciarAutorizacionCarpeta);
+
+window.addEventListener("message", function(event) {
+  const iframe = document.getElementById("iframePicker");
+
+  if (event.source !== iframe.contentWindow) return;
+
+  let origenConfiable = false;
+
+  try {
+    const host = new URL(event.origin).hostname;
+
+    origenConfiable =
+      event.origin.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com")
+      );
+  } catch (error) {
+    return;
+  }
+
+  if (!origenConfiable) return;
+
+  if (event.data?.tipo === "PICKER_LISTO") {
+    if (!idTokenGoogle) return;
+
+    iframe.contentWindow.postMessage({
+      tipo: "AUTORIZAR_PICKER",
+      idToken: idTokenGoogle
+    }, event.origin);
+  }
+
+  if (event.data?.tipo === "RESULTADO_PICKER") {
+    document.getElementById("estadoAutorizacionFotos").textContent =
+      event.data.ok
+        ? "Carpeta autorizada: " + event.data.nombre
+        : event.data.cancelado
+          ? "Selección cancelada."
+          : "La carpeta seleccionada no es la esperada.";
+
+    if (event.data.ok) {
+      document.getElementById("contenedorPicker").hidden = true;
+    }
+  }
+});
+  
+
+async function recibirCredencialGoogle(respuesta) {
+  if (!respuesta || !respuesta.credential) {
+    estadoUsuario.textContent =
+      "No se pudo completar la identificación de Google.";
+    return;
+  }
+
+  idTokenGoogle = respuesta.credential;
+
+  estadoUsuario.textContent =
+    "Cuenta de Google identificada. Comprobando perfil...";
+
+  try {
+    const perfil = await solicitarServidor({
+      accion: "consultarPerfil",
+      idToken: idTokenGoogle
+    });
+
+    const panel = document.getElementById("autorizacionFotos");
+
+    if (!perfil || !perfil.ok) {
+      panel.hidden = true;
+      estadoUsuario.textContent =
+        perfil?.error || "No se pudo verificar el perfil.";
+      return;
+    }
+
+    if (perfil.perfil === "Administrador") {
+      panel.hidden = false;
+      document.getElementById("estadoAutorizacionFotos").textContent =
+        "Perfil de administrador confirmado.";
+    } else {
+      panel.hidden = true;
+    }
+
+    await sincronizarPendientes();
+
+  } catch (error) {
+    document.getElementById("autorizacionFotos").hidden = true;
+    estadoUsuario.textContent =
+      "No se pudo comprobar el perfil: " + error.message;
+  }
+}
+  
+function inicializarGoogleIdentity() {
+  if (
+    !window.google ||
+    !google.accounts ||
+    !google.accounts.id
+  ) {
+    estadoUsuario.textContent =
+      "No se pudo cargar el servicio de inicio de sesión de Google. Recarga cuando tengas conexión.";
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: ID_CLIENTE_OAUTH,
+    callback: recibirCredencialGoogle,
+    auto_select: false
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById("botonGoogle"),
+    {
+      theme: "outline",
+      size: "large",
+      text: "signin_with",
+      shape: "rectangular",
+      width: 280
+    }
+  );
+}
+
 
   // Lee la fecha original de captura de una fotografía JPEG (EXIF).
   async function leerFechaEXIF(archivo) {
@@ -430,83 +639,72 @@ function convertirFotoBase64(archivo) {
 }
 
   
+
 async function subirFotoDrive(archivo) {
   if (!archivo) return "";
 
-  const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
-
   const datosBase64 = await convertirFotoBase64(archivo);
 
-  const respuesta = await fetch(URL_SERVIDOR, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      accion: "guardarFoto",
-      datosBase64: datosBase64,
-      nombreOriginal: archivo.name,
-      tipoMime: archivo.type
-    })
+  const resultado = await solicitarServidor({
+    accion: "guardarFoto",
+    idToken: idTokenGoogle,
+    datosBase64: datosBase64,
+    nombreOriginal: archivo.name,
+    tipoMime: archivo.type
   });
 
-  const resultado = await respuesta.json();
-
-  if (!resultado.ok || !resultado.foto || !resultado.foto.enlace) {
-    throw new Error("El servidor no confirmó el guardado de la fotografía");
+  if (!resultado || !resultado.ok ||
+      !resultado.foto || !resultado.foto.enlace) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no confirmó el guardado de la fotografía."
+    );
   }
 
   return resultado.foto.enlace;
 }
    
   
+
 async function sincronizarPendientes() {
+  if (!idTokenGoogle) {
+    estado.textContent =
+      "Visita guardada localmente. Identifícate con Google para sincronizar.";
+    return;
+  }
+
   if (sincronizacionEnCurso) return;
   sincronizacionEnCurso = true;
+
   try {
-  
-  if (!navigator.onLine) return;
+    if (!navigator.onLine) return;
 
-  const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+    const registros = await obtenerTodas();
 
-  const registros = await obtenerTodas();
+    const pendientes = registros.filter(
+      registro => registro.estado === "Pendiente de sincronización"
+    );
 
-  const pendientes = registros.filter(
-    registro => registro.estado === "Pendiente de sincronización"
-  );
+    for (let registro of pendientes) {
+      try {
+        const fotoMantenimiento =
+          registro.fotoMantenimiento || registro.foto || null;
 
-  for (let registro of pendientes) {
-    try {
-      // Recuperar compatibilidad con fotografías antiguas.
-      const fotoMantenimiento =
-        registro.fotoMantenimiento || registro.foto || null;
+        if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
+          const enlace = await subirFotoDrive(fotoMantenimiento);
+          registro.enlaceFotoMantenimiento = enlace;
+          await guardarEnDB(registro);
+        }
 
-      // Subir la fotografía de mantenimiento si aún no tiene enlace.
-      if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
-        const enlace = await subirFotoDrive(fotoMantenimiento);
+        if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
+          const enlace = await subirFotoDrive(registro.fotoNovedades);
+          registro.enlaceFotoNovedades = enlace;
+          await guardarEnDB(registro);
+        }
 
-        registro.enlaceFotoMantenimiento = enlace;
-        await guardarEnDB(registro);
-      }
-
-      // Subir la fotografía de novedades si aún no tiene enlace.
-      if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
-        const enlace = await subirFotoDrive(registro.fotoNovedades);
-
-        registro.enlaceFotoNovedades = enlace;
-        await guardarEnDB(registro);
-      }
-
-      // Enviar la visita completa al servidor.
-      const respuesta = await fetch(URL_SERVIDOR, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: JSON.stringify({
+        const resultado = await solicitarServidor({
           accion: "guardarVisita",
+          idToken: idTokenGoogle,
           visita: {
             id: registro.id,
             fecha: registro.fecha,
@@ -533,34 +731,33 @@ async function sincronizarPendientes() {
             comparacionFechaFoto:
               registro.comparacionFechaFoto || "NO VERIFICABLE"
           }
-        })
-      });
+        });
 
-      const resultado = await respuesta.json();
+        if (!resultado || !resultado.ok || !resultado.guardado) {
+          throw new Error(
+            resultado?.error ||
+            "El servidor no confirmó el registro."
+          );
+        }
 
-      if (!resultado.ok || !resultado.guardado) {
-        throw new Error(
-          resultado.error || "El servidor no confirmó el registro"
+        await actualizarEstadoEnDB(
+          registro.id,
+          "Sincronizada"
+        );
+
+      } catch (error) {
+        console.error(
+          "No se pudo sincronizar la visita " + registro.id,
+          error
         );
       }
-
-      await actualizarEstadoEnDB(
-        registro.id,
-        "Sincronizada"
-      );
-
-    } catch (error) {
-      console.error(
-        "No se pudo sincronizar la visita " + registro.id,
-        error
-      );
     }
-  }
 
- await mostrarRegistros();
-} finally {
-  sincronizacionEnCurso = false;
-}
+    await mostrarRegistros();
+
+  } finally {
+    sincronizacionEnCurso = false;
+  }
 }
   
   async function migrarRegistrosAntiguos() {
@@ -579,7 +776,7 @@ async function sincronizarPendientes() {
     }
     return migrados;
   }
-
+  window.addEventListener("load", inicializarGoogleIdentity);
   window.addEventListener("online", () => {
     sincronizarPendientes();
   });
@@ -746,6 +943,7 @@ async function mostrarRegistros() {
         "Visita guardada en este navegador. " + mensajeServidor;
 
       formulario.reset();
+      aplicarParametrosVisita();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
       await mostrarRegistros();
 
@@ -820,6 +1018,151 @@ if ("serviceWorker" in navigator) {
       .catch(error => console.error("Error al registrar el service worker:", error));
   });
 }
+</script>
+<div id="contenedorPicker" hidden>
+  <iframe
+    id="iframePicker"
+    title="Autorización de carpeta de fotografías"
+    width="100%"
+    height="550"
+    frameborder="0">
+  </iframe>
+</div>
+  
+<iframe
+  id="iframePuente"
+  title="Comunicación con el servidor"
+  width="1"
+  height="1"
+  style="position:absolute;left:-9999px;border:0;">
+</iframe>
+
+<script>
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbzjEy-Ob3XbdAq_STVLVNjaohz5AT0Vw4S3yuAD43VEp1UrRik0l_E59CFSqKFHGejN/exec";
+
+  const iframePuente = document.getElementById("iframePuente");
+
+  let puentePreparado = false;
+  let origenPuente = null;
+  let contadorSolicitudes = 0;
+  const solicitudesPendientes = new Map();
+
+  function origenServidorConfiable(origen) {
+    try {
+      const host = new URL(origen).hostname;
+      return origen.startsWith("https://") &&
+        (
+          host === "script.google.com" ||
+          host === "script.googleusercontent.com" ||
+          host.endsWith(".script.googleusercontent.com") ||
+          host.endsWith("-script.googleusercontent.com")
+        );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function obtenerMarcoPuente() {
+    try {
+      return iframePuente.contentWindow.frames[0] || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function iniciarHandshake() {
+    puentePreparado = false;
+    origenPuente = null;
+
+    const inicio = Date.now();
+
+    while (!puentePreparado && Date.now() - inicio < 30000) {
+      const marco = obtenerMarcoPuente();
+
+      if (marco) {
+        // Este mensaje inicial no contiene credenciales ni datos privados.
+        marco.postMessage({ tipo: "INICIAR_PUENTE" }, "*");
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    if (!puentePreparado) {
+      console.error("El puente no completó el saludo inicial.");
+    }
+  }
+
+  window.addEventListener("message", function(event) {
+    const marco = obtenerMarcoPuente();
+
+    if (!marco || event.source !== marco) return;
+    if (!origenServidorConfiable(event.origin)) return;
+
+    if (event.data?.tipo === "PUENTE_LISTO") {
+      origenPuente = event.origin;
+      puentePreparado = true;
+      console.log("Puente directo preparado:", origenPuente);
+      return;
+    }
+
+    if (event.origin !== origenPuente) return;
+
+    if (event.data?.tipo === "RESPUESTA_SERVIDOR") {
+      const pendiente = solicitudesPendientes.get(
+        event.data.idSolicitud
+      );
+
+      if (!pendiente) return;
+
+      clearTimeout(pendiente.temporizador);
+      solicitudesPendientes.delete(event.data.idSolicitud);
+      pendiente.resolver(event.data.resultado);
+    }
+  });
+
+  iframePuente.addEventListener("load", iniciarHandshake);
+  iframePuente.src = URL_SERVIDOR;
+
+  async function solicitarServidor(solicitud) {
+    const inicio = Date.now();
+
+    while (!puentePreparado) {
+      if (Date.now() - inicio > 30000) {
+        throw new Error("El puente no respondió.");
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    const marco = obtenerMarcoPuente();
+
+    if (!marco || !origenPuente) {
+      throw new Error("No está disponible el marco seguro del puente.");
+    }
+
+    const idSolicitud =
+      "solicitud-" + Date.now() + "-" + (++contadorSolicitudes);
+
+    return new Promise((resolve, reject) => {
+      const temporizador = setTimeout(() => {
+        solicitudesPendientes.delete(idSolicitud);
+        reject(new Error("El servidor no respondió a tiempo."));
+      }, 60000);
+
+      solicitudesPendientes.set(idSolicitud, {
+        resolver: resolve,
+        temporizador: temporizador
+      });
+
+      // Las solicitudes, incluido el token de Google, usan el origen exacto.
+      marco.postMessage({
+        tipo: "SOLICITUD_SERVIDOR",
+        idSolicitud: idSolicitud,
+        solicitud: solicitud
+      }, origenPuente);
+    });
+  }
 </script>
 
 </body>
