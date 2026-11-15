@@ -120,15 +120,16 @@
 
   <p id="estadoAutorizacionFotos" class="note" aria-live="polite"></p>
 
-  <div id="contenedorPicker" hidden style="margin-top:12px; border:1px solid #cbd5e1; border-radius:8px; overflow:hidden;">
-    <iframe
-      id="iframePicker"
-      title="Autorización de carpeta de fotografías"
-      width="100%"
-      height="550"
-      frameborder="0">
-    </iframe>
-  </div>
+  <hr>
+  <p class="note"><strong>Prueba controlada de escritura</strong></p>
+  <p class="note">
+    Envía una sola visita ficticia, identificada como prueba técnica,
+    a la pestaña existente Visitas. No utiliza ni modifica los registros locales.
+  </p>
+  <button type="button" class="secondary" id="btnPruebaEscritura">
+    Enviar una visita ficticia a Google Sheets
+  </button>
+  <p id="estadoPruebaEscritura" class="note" aria-live="polite"></p>
 </div>
   
   <p class="note">
@@ -243,8 +244,6 @@
   const CLAVE = "visitasPiscinasPendientes";
   const DB_NOMBRE = "mantenimientoPiscinasDB";
   const DB_VERSION = 1;
-  // Rama de pruebas: mantener desactivadas las operaciones con datos.
-  const MODO_PRUEBA_COMUNICACION = true;
 
   const formulario = document.getElementById("formulario");
   const estado = document.getElementById("estado");
@@ -289,6 +288,7 @@
 
   let db = null;
   let sincronizacionEnCurso = false;
+  const DIAGNOSTICO_SOLO_LECTURA = true;
   
 const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
@@ -297,102 +297,124 @@ let idTokenGoogle = null;
 const estadoUsuario = document.getElementById("estadoUsuario");
 
 function iniciarAutorizacionCarpeta() {
-  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
-  const contenedor = document.getElementById("contenedorPicker");
-  const iframe = document.getElementById("iframePicker");
-
-  estadoFotos.textContent = "Clic recibido. Preparando selector...";
-  contenedor.hidden = false;
-
   if (!idTokenGoogle) {
-    estadoFotos.textContent =
-      "El clic llegó, pero primero debes identificarte con Google.";
+    estadoUsuario.textContent =
+      "Primero debes identificarte con Google.";
     return;
   }
 
-  try {
-    iframe.src = URL_SERVIDOR + "?selector=1";
-    estadoFotos.textContent =
-      "Clic recibido. Cargando el selector de carpetas de Google...";
-  } catch (error) {
-    estadoFotos.textContent =
-      "El clic llegó, pero no se pudo iniciar el selector: " +
-      (error?.message || String(error));
-  }
+  const contenedor = document.getElementById("contenedorPicker");
+  const iframe = document.getElementById("iframePicker");
+
+  contenedor.hidden = false;
+
+  iframe.src = URL_SERVIDOR + "?selector=1";
 }
 
 document.getElementById("btnAutorizarCarpeta")
   .addEventListener("click", iniciarAutorizacionCarpeta);
 
-let ventanaSelectorAutorizada = null;
+async function ejecutarPruebaEscritura() {
+  const boton = document.getElementById("btnPruebaEscritura");
+  const salida = document.getElementById("estadoPruebaEscritura");
+
+  if (!idTokenGoogle) {
+    salida.textContent = "Primero debes identificarte con Google.";
+    return;
+  }
+
+  const idPrueba = "PRUEBA-TRANSPORTE-PWA-20261114-V8";
+
+  if (!window.confirm(
+    "Se enviará una única visita claramente identificada como prueba técnica " +
+    "a la pestaña Visitas. No se tocarán los registros locales. ¿Continuar?"
+  )) {
+    return;
+  }
+
+  boton.disabled = true;
+  salida.textContent = "Enviando la visita ficticia al servidor...";
+
+  try {
+    const resultado = await solicitarServidor({
+      accion: "guardarVisita",
+      idToken: idTokenGoogle,
+      visita: {
+        id: idPrueba,
+        fecha: new Date().toISOString(),
+        cliente: "PRUEBA TÉCNICA - NO ES CLIENTE",
+        tipo: "No programada",
+        observaciones:
+          "REGISTRO FICTICIO DE PRUEBA DE TRANSPORTE. " +
+          "Identificador: " + idPrueba
+      }
+    });
+
+    if (!resultado || !resultado.ok || !resultado.guardado) {
+      throw new Error(
+        resultado?.error || "El servidor no confirmó el guardado."
+      );
+    }
+
+    salida.textContent = resultado.duplicado
+      ? "La prueba ya estaba registrada. No se creó una segunda fila. ID: " + idPrueba
+      : "Prueba confirmada: la visita ficticia se guardó en Visitas. ID: " + idPrueba;
+
+  } catch (error) {
+    salida.textContent =
+      "No se pudo confirmar la prueba: " + error.message +
+      ". Revisa Ejecuciones antes de volver a intentarlo.";
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+document.getElementById("btnPruebaEscritura")
+  .addEventListener("click", ejecutarPruebaEscritura);
 
 window.addEventListener("message", function(event) {
-  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
+  const iframe = document.getElementById("iframePicker");
 
-  // Diagnóstico temporal: muestra origen y tipo, nunca credenciales ni tokens.
-  const tipoDiagnostico = event.data && typeof event.data === "object"
-    ? event.data.tipo
-    : typeof event.data;
-  estadoFotos.textContent =
-    "Mensaje recibido: origen=" + event.origin + " | tipo=" + String(tipoDiagnostico || "sin tipo");
+  if (event.source !== iframe.contentWindow) return;
 
-  // Apps Script puede insertar un marco intermedio. El selector avisa a window.top;
-  // por eso se valida el origen y se responde a la ventana que envió el mensaje.
   let origenConfiable = false;
 
   try {
     const host = new URL(event.origin).hostname;
+
     origenConfiable =
       event.origin.startsWith("https://") &&
       (
         host === "script.google.com" ||
         host === "script.googleusercontent.com" ||
-        host.endsWith(".script.googleusercontent.com") ||
-        host.endsWith("-script.googleusercontent.com")
+        host.endsWith(".script.googleusercontent.com")
       );
   } catch (error) {
     return;
   }
 
-  if (!origenConfiable || !event.data || typeof event.data !== "object") return;
+  if (!origenConfiable) return;
 
-  const tipoMensaje = event.data.tipo;
-  if (tipoMensaje !== "PICKER_LISTO" && tipoMensaje !== "RESULTADO_PICKER") return;
+  if (event.data?.tipo === "PICKER_LISTO") {
+    if (!idTokenGoogle) return;
 
-  if (tipoMensaje === "PICKER_LISTO") {
-    if (!idTokenGoogle) {
-      estadoFotos.textContent =
-        "El selector avisó que está listo, pero no hay una sesión de Google disponible.";
-      return;
-    }
-
-    ventanaSelectorAutorizada = event.source;
-    estadoFotos.textContent =
-      "Selector conectado. Enviando autorización de Google...";
-
-    event.source.postMessage({
+    iframe.contentWindow.postMessage({
       tipo: "AUTORIZAR_PICKER",
       idToken: idTokenGoogle
     }, event.origin);
-    return;
   }
 
-  if (event.source !== ventanaSelectorAutorizada) {
-    estadoFotos.textContent =
-      "Se recibió un resultado desde una ventana distinta del selector autorizado.";
-    return;
-  }
+  if (event.data?.tipo === "RESULTADO_PICKER") {
+    document.getElementById("estadoAutorizacionFotos").textContent =
+      event.data.ok
+        ? "Carpeta autorizada: " + event.data.nombre
+        : event.data.cancelado
+          ? "Selección cancelada."
+          : "La carpeta seleccionada no es la esperada.";
 
-  estadoFotos.textContent =
-    event.data.ok
-      ? "Carpeta autorizada: " + String(event.data.nombre || "")
-      : event.data.cancelado
-        ? "Selección cancelada."
-        : "La carpeta seleccionada no es la esperada.";
-
-  if (event.data.ok) {
-    document.getElementById("contenedorPicker").hidden = true;
-    ventanaSelectorAutorizada = null;
+    if (event.data.ok) {
+      document.getElementById("contenedorPicker").hidden = true;
+    }
   }
 });
   
@@ -425,32 +447,14 @@ async function recibirCredencialGoogle(respuesta) {
     }
 
     if (perfil.perfil === "Administrador") {
-      panel.hidden = false; // Visible para probar Picker; el modo prueba sigue bloqueando escrituras.
-      const estadoFotos = document.getElementById("estadoAutorizacionFotos");
-      estadoFotos.textContent = "Perfil de administrador confirmado. Consultando autorización de carpeta...";
-
-      const estadoCarpeta = await solicitarServidor({
-        accion: "consultarCarpetaFotos",
-        idToken: idTokenGoogle
-      });
-
-      if (!estadoCarpeta || !estadoCarpeta.ok) {
-        estadoFotos.textContent =
-          estadoCarpeta?.error || "No se pudo consultar la autorización de la carpeta.";
-      } else if (estadoCarpeta.autorizada) {
-        estadoFotos.textContent =
-          "Carpeta autorizada: " + String(estadoCarpeta.nombre || "Fotos PWA Piscinas");
-      } else {
-        estadoFotos.textContent =
-          "La carpeta de fotografías todavía no está autorizada.";
-      }
+      panel.hidden = false;
+      document.getElementById("estadoAutorizacionFotos").textContent =
+        "Perfil de administrador confirmado.";
     } else {
       panel.hidden = true;
     }
 
-    if (!MODO_PRUEBA_COMUNICACION) {
-      await sincronizarPendientes();
-    }
+    await sincronizarPendientes();
 
   } catch (error) {
     document.getElementById("autorizacionFotos").hidden = true;
@@ -733,10 +737,7 @@ async function subirFotoDrive(archivo) {
   
 
 async function sincronizarPendientes() {
-  if (MODO_PRUEBA_COMUNICACION) {
-    console.info("Modo de prueba: sincronización bloqueada.");
-    return;
-  }
+  if (DIAGNOSTICO_SOLO_LECTURA) return;
   if (!idTokenGoogle) {
     estado.textContent =
       "Visita guardada localmente. Identifícate con Google para sincronizar.";
@@ -938,8 +939,8 @@ async function mostrarRegistros() {
 
   formulario.addEventListener("submit", async event => {
     event.preventDefault();
-    if (MODO_PRUEBA_COMUNICACION) {
-      estado.textContent = "Modo de prueba: el guardado de visitas está deshabilitado.";
+    if (DIAGNOSTICO_SOLO_LECTURA) {
+      estado.textContent = "Modo diagnóstico: el formulario está deshabilitado para proteger los registros locales.";
       return;
     }
 
@@ -1066,38 +1067,43 @@ async function mostrarRegistros() {
     }
   });
 
-  (async () => {
-    if (MODO_PRUEBA_COMUNICACION) {
-      formulario.querySelector('button[type="submit"]').disabled = true;
-      estado.textContent = "Modo de prueba: no se leen ni modifican registros locales; guardado y sincronización deshabilitados.";
-      return;
-    }
-    try {
-      db = await abrirDB();
-      const migrados = await migrarRegistrosAntiguos();
-      await mostrarRegistros();
-      await sincronizarPendientes();
-      estado.textContent = migrados
-        ? `Almacenamiento preparado. Se copiaron ${migrados} registro(s) anteriores.`
-        : "Almacenamiento local preparado. Las nuevas visitas se guardarán en IndexedDB.";
-    } catch (error) {
-      estado.textContent =
-        "No se pudo iniciar el almacenamiento local. No guardes visitas hasta resolverlo.";
-      formulario.querySelector('button[type="submit"]').disabled = true;
-    }
-  })();
+  // No se abre IndexedDB ni se migran/modifican registros locales en esta copia.
+  estado.textContent = "Diagnóstico de comunicación: inicia sesión con Google para consultar tu perfil. No se guardarán visitas.";
 })();
 </script>
+  
 
+<div id="contenedorPicker" hidden>
+  <iframe
+    id="iframePicker"
+    title="Autorización de carpeta de fotografías"
+    width="100%"
+    height="550"
+    frameborder="0">
+  </iframe>
+</div>
+  
 
 <script>
-  // Comunicación directa con Apps Script, validada en la página de diagnóstico.
+  // Diagnóstico temporal: solo consulta de perfil; no sincroniza ni escribe.
   const URL_SERVIDOR =
     "https://script.google.com/macros/s/AKfycbzjEy-Ob3XbdAq_STVLVNjaohz5AT0Vw4S3yuAD43VEp1UrRik0l_E59CFSqKFHGejN/exec";
 
   async function solicitarServidor(solicitud) {
-    if (!solicitud || typeof solicitud.accion !== "string") {
-      throw new Error("La solicitud al servidor no es válida.");
+    const esConsultaPerfil =
+      solicitud && solicitud.accion === "consultarPerfil";
+
+    const esPruebaEscritura =
+      solicitud &&
+      solicitud.accion === "guardarVisita" &&
+      solicitud.visita &&
+      solicitud.visita.id === "PRUEBA-TRANSPORTE-PWA-20261114-V8" &&
+      solicitud.visita.cliente === "PRUEBA TÉCNICA - NO ES CLIENTE";
+
+    if (!esConsultaPerfil && !esPruebaEscritura) {
+      throw new Error(
+        "Esta copia solo permite consultar el perfil y enviar la visita ficticia autorizada."
+      );
     }
 
     const respuesta = await fetch(URL_SERVIDOR, {
@@ -1108,24 +1114,11 @@ async function mostrarRegistros() {
       body: JSON.stringify(solicitud)
     });
 
-    let resultado;
-    try {
-      resultado = await respuesta.json();
-    } catch (error) {
-      throw new Error(
-        "El servidor no devolvió una respuesta JSON válida (HTTP " +
-        respuesta.status + ")."
-      );
-    }
-
     if (!respuesta.ok) {
-      throw new Error(
-        resultado?.error ||
-        "El servidor respondió con estado HTTP " + respuesta.status + "."
-      );
+      throw new Error("El servidor respondió con estado HTTP " + respuesta.status + ".");
     }
 
-    return resultado;
+    return await respuesta.json();
   }
 </script>
 
