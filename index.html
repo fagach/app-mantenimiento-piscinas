@@ -302,49 +302,68 @@ function iniciarAutorizacionCarpeta() {
 document.getElementById("btnAutorizarCarpeta")
   .addEventListener("click", iniciarAutorizacionCarpeta);
 
+let ventanaSelectorAutorizada = null;
+
 window.addEventListener("message", function(event) {
-  const iframe = document.getElementById("iframePicker");
+  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
 
-  if (event.source !== iframe.contentWindow) return;
-
+  // Apps Script puede insertar un marco intermedio. El selector avisa a window.top;
+  // por eso se valida el origen y se responde a la ventana que envió el mensaje.
   let origenConfiable = false;
 
   try {
     const host = new URL(event.origin).hostname;
-
     origenConfiable =
       event.origin.startsWith("https://") &&
       (
         host === "script.google.com" ||
         host === "script.googleusercontent.com" ||
-        host.endsWith(".script.googleusercontent.com")
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
       );
   } catch (error) {
     return;
   }
 
-  if (!origenConfiable) return;
+  if (!origenConfiable || !event.data || typeof event.data !== "object") return;
 
-  if (event.data?.tipo === "PICKER_LISTO") {
-    if (!idTokenGoogle) return;
+  const tipoMensaje = event.data.tipo;
+  if (tipoMensaje !== "PICKER_LISTO" && tipoMensaje !== "RESULTADO_PICKER") return;
 
-    iframe.contentWindow.postMessage({
+  if (tipoMensaje === "PICKER_LISTO") {
+    if (!idTokenGoogle || !event.source) {
+      estadoFotos.textContent =
+        "El selector avisó que está listo, pero no hay una sesión de Google disponible.";
+      return;
+    }
+
+    ventanaSelectorAutorizada = event.source;
+    estadoFotos.textContent =
+      "Selector conectado. Enviando autorización de Google...";
+
+    event.source.postMessage({
       tipo: "AUTORIZAR_PICKER",
       idToken: idTokenGoogle
     }, event.origin);
+    return;
   }
 
-  if (event.data?.tipo === "RESULTADO_PICKER") {
-    document.getElementById("estadoAutorizacionFotos").textContent =
-      event.data.ok
-        ? "Carpeta autorizada: " + event.data.nombre
-        : event.data.cancelado
-          ? "Selección cancelada."
-          : "La carpeta seleccionada no es la esperada.";
+  if (event.source !== ventanaSelectorAutorizada) {
+    estadoFotos.textContent =
+      "Se recibió un resultado desde una ventana distinta del selector autorizado.";
+    return;
+  }
 
-    if (event.data.ok) {
-      document.getElementById("contenedorPicker").hidden = true;
-    }
+  estadoFotos.textContent =
+    event.data.ok
+      ? "Carpeta autorizada: " + String(event.data.nombre || "")
+      : event.data.cancelado
+        ? "Selección cancelada."
+        : "La carpeta seleccionada no es la esperada.";
+
+  if (event.data.ok) {
+    document.getElementById("contenedorPicker").hidden = true;
+    ventanaSelectorAutorizada = null;
   }
 });
   
