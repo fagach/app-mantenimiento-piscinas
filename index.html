@@ -397,8 +397,32 @@ async function recibirCredencialGoogle(respuesta) {
 
     if (perfil.perfil === "Administrador") {
       panel.hidden = false;
-      document.getElementById("estadoAutorizacionFotos").textContent =
-        "Perfil de administrador confirmado.";
+
+      const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
+      estadoCarpeta.textContent =
+        "Consultando autorización de la carpeta...";
+
+      try {
+        const carpeta = await solicitarServidor({
+          accion: "consultarCarpetaFotos",
+          idToken: idTokenGoogle
+        });
+
+        if (!carpeta || !carpeta.ok) {
+          throw new Error(
+            carpeta?.error || "No se pudo consultar la autorización."
+          );
+        }
+
+        estadoCarpeta.textContent = carpeta.autorizada
+          ? "Carpeta autorizada: " + carpeta.nombre
+          : "Carpeta de fotografías pendiente de autorización.";
+
+      } catch (error) {
+        estadoCarpeta.textContent =
+          "No se pudo consultar la autorización: " + error.message;
+      }
+
     } else {
       panel.hidden = true;
     }
