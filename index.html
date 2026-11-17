@@ -265,6 +265,32 @@
     document.getElementById("tipo").disabled = true;
   }
 
+  function limpiarParametrosVisita() {
+    const cliente = document.getElementById("cliente");
+    const operador = document.getElementById("operador");
+    const tipo = document.getElementById("tipo");
+
+    cliente.value = "";
+    cliente.readOnly = false;
+    operador.value = "";
+    operador.readOnly = false;
+    tipo.selectedIndex = -1;
+    tipo.disabled = false;
+
+    estadoUsuario.textContent = "";
+
+    // Quitar solo los parámetros de precarga; conservar cualquier otro parámetro.
+    const urlActual = new URL(window.location.href);
+    urlActual.searchParams.delete("entry.51684031");
+    urlActual.searchParams.delete("entry.1166786524");
+    urlActual.searchParams.delete("entry.1764256793");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      urlActual.pathname + urlActual.search + urlActual.hash
+    );
+  }
+
   if (enlaceVisitaValido) {
     aplicarParametrosVisita();
     document.getElementById("estadoUsuario").textContent =
@@ -986,7 +1012,7 @@ async function mostrarRegistros() {
         "Visita guardada en este navegador. " + mensajeServidor;
 
       formulario.reset();
-      aplicarParametrosVisita();
+      limpiarParametrosVisita();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
       await mostrarRegistros();
 
