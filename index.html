@@ -468,6 +468,20 @@ async function recibirCredencialGoogle(respuesta) {
 
     actualizarEstadoSesion("Sesión de Google verificada y autorizada.");
 
+    let correoGoogle = "cuenta autorizada";
+    try {
+      const partesToken = idTokenGoogle.split(".");
+      const datosGoogle = JSON.parse(
+        atob(partesToken[1].replace(/-/g, "+").replace(/_/g, "/"))
+      );
+      if (datosGoogle.email) correoGoogle = datosGoogle.email;
+    } catch (error) {
+      // La autorización del servidor ya fue confirmada.
+    }
+
+    document.getElementById("botonGoogle").hidden = true;
+    estadoUsuario.textContent = "Sesión iniciada como " + correoGoogle + ".";
+
     if (perfil.perfil === "Administrador") {
       panel.hidden = false;
 
