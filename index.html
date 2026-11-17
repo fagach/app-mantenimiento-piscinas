@@ -162,6 +162,7 @@
 
   <label for="tipo">Tipo de visita</label>
   <select id="tipo" name="tipo" required>
+    <option value="" selected disabled>Selecciona el tipo de visita</option>
     <option value="Programada">Programada</option>
     <option value="No programada">No programada</option>
   </select>
@@ -444,7 +445,7 @@ async function recibirCredencialGoogle(respuesta) {
   }
 
   idTokenGoogle = respuesta.credential;
-  actualizarEstadoSesion("Sesión de Google iniciada.");
+  actualizarEstadoSesion("Credencial recibida. Verificando autorización...");
 
   estadoUsuario.textContent =
     "Cuenta de Google identificada. Comprobando autorización...";
@@ -459,10 +460,13 @@ async function recibirCredencialGoogle(respuesta) {
 
     if (!perfil || !perfil.ok) {
       panel.hidden = true;
+      actualizarEstadoSesion("Cuenta de Google no autorizada para esta PWA.");
       estadoUsuario.textContent =
         perfil?.error || "La cuenta de Google no está autorizada para usar la PWA.";
       return;
     }
+
+    actualizarEstadoSesion("Sesión de Google verificada y autorizada.");
 
     if (perfil.perfil === "Administrador") {
       panel.hidden = false;
@@ -503,7 +507,7 @@ async function recibirCredencialGoogle(respuesta) {
     estadoUsuario.textContent =
       "No se pudo comprobar la autorización: " + error.message;
     actualizarEstadoSesion(
-      "Credencial de Google recibida; verificación del acceso pendiente."
+      "No se pudo verificar el acceso con Google. Comprueba la conexión e inténtalo nuevamente."
     );
   }
 }
