@@ -83,6 +83,24 @@
 
     .error.visible { display: block; }
 
+    .indicador {
+      margin: 8px 0;
+      padding: 9px 11px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .indicador-sesion {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .indicador-conexion {
+      background: #e0f2fe;
+      color: #075985;
+    }
+
     #estado {
       margin-top: 16px;
       padding: 12px;
@@ -102,6 +120,12 @@
   <h1>Mantenimiento de Piscinas</h1>
   <div id="accesoGoogle">
   <p class="note"><strong>Acceso al sistema</strong></p>
+  <p id="estadoSesion" class="indicador indicador-sesion" role="status" aria-live="polite">
+    Verificando sesión de Google...
+  </p>
+  <p id="estadoConexion" class="indicador indicador-conexion" role="status" aria-live="polite">
+    Comprobando conexión...
+  </p>
   <div id="botonGoogle"></div>
   <p id="estadoUsuario" class="note" aria-live="polite">
     Debes identificarte con tu cuenta de Google para sincronizar visitas.
@@ -277,8 +301,6 @@
     tipo.selectedIndex = -1;
     tipo.disabled = false;
 
-    estadoUsuario.textContent = "";
-
     // Quitar solo los parámetros de precarga; conservar cualquier otro parámetro.
     const urlActual = new URL(window.location.href);
     urlActual.searchParams.delete("entry.51684031");
@@ -309,6 +331,26 @@ const ID_CLIENTE_OAUTH =
 let idTokenGoogle = null;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
+const estadoSesion = document.getElementById("estadoSesion");
+const estadoConexion = document.getElementById("estadoConexion");
+let googleIdentityInicializado = false;
+
+function actualizarEstadoConexion() {
+  estadoConexion.textContent = navigator.onLine
+    ? "Internet: conectado"
+    : "Internet: sin conexión";
+}
+
+function actualizarEstadoSesion(mensaje) {
+  estadoSesion.textContent = mensaje;
+}
+
+actualizarEstadoConexion();
+actualizarEstadoSesion(
+  navigator.onLine
+    ? "Verificando sesión de Google..."
+    : "Sesión de Google sin verificar: no hay Internet."
+);
 
 function iniciarAutorizacionCarpeta() {
   if (!idTokenGoogle) {
@@ -402,9 +444,10 @@ async function recibirCredencialGoogle(respuesta) {
   }
 
   idTokenGoogle = respuesta.credential;
+  actualizarEstadoSesion("Sesión de Google iniciada.");
 
   estadoUsuario.textContent =
-    "Cuenta de Google identificada. Comprobando perfil...";
+    "Cuenta de Google identificada. Comprobando autorización...";
 
   try {
     const perfil = await solicitarServidor({
@@ -417,7 +460,7 @@ async function recibirCredencialGoogle(respuesta) {
     if (!perfil || !perfil.ok) {
       panel.hidden = true;
       estadoUsuario.textContent =
-        perfil?.error || "No se pudo verificar el perfil.";
+        perfil?.error || "La cuenta de Google no está autorizada para usar la PWA.";
       return;
     }
 
@@ -458,25 +501,38 @@ async function recibirCredencialGoogle(respuesta) {
   } catch (error) {
     document.getElementById("autorizacionFotos").hidden = true;
     estadoUsuario.textContent =
-      "No se pudo comprobar el perfil: " + error.message;
+      "No se pudo comprobar la autorización: " + error.message;
+    actualizarEstadoSesion(
+      "Credencial de Google recibida; verificación del acceso pendiente."
+    );
   }
 }
   
 function inicializarGoogleIdentity() {
+  if (!navigator.onLine) {
+    actualizarEstadoSesion(
+      "Sesión de Google sin verificar: no hay Internet."
+    );
+    return;
+  }
+
+  if (googleIdentityInicializado) return;
+
   if (
     !window.google ||
     !google.accounts ||
     !google.accounts.id
   ) {
     estadoUsuario.textContent =
-      "No se pudo cargar el servicio de inicio de sesión de Google. Recarga cuando tengas conexión.";
+      "No se pudo cargar el servicio de inicio de sesión de Google. Se intentará nuevamente al recuperar Internet.";
+    actualizarEstadoSesion("No se pudo verificar la sesión de Google.");
     return;
   }
 
   google.accounts.id.initialize({
     client_id: ID_CLIENTE_OAUTH,
     callback: recibirCredencialGoogle,
-    auto_select: false
+    auto_select: true
   });
 
   google.accounts.id.renderButton(
@@ -489,6 +545,20 @@ function inicializarGoogleIdentity() {
       width: 280
     }
   );
+
+  googleIdentityInicializado = true;
+  actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+
+  google.accounts.id.prompt((notificacion) => {
+    if (
+      notificacion.isNotDisplayed() ||
+      notificacion.isSkippedMoment()
+    ) {
+      actualizarEstadoSesion(
+        "Google no recuperó la sesión automáticamente. Puedes usar el botón para identificarte."
+      );
+    }
+  });
 }
 
 
@@ -847,8 +917,11 @@ async function sincronizarPendientes() {
   }
   window.addEventListener("load", inicializarGoogleIdentity);
   window.addEventListener("online", () => {
+    actualizarEstadoConexion();
+    if (!idTokenGoogle) inicializarGoogleIdentity();
     sincronizarPendientes();
   });
+  window.addEventListener("offline", actualizarEstadoConexion);
   
   
 async function mostrarRegistros() {
