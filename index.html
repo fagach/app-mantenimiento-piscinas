@@ -290,18 +290,7 @@
     document.getElementById("tipo").disabled = true;
   }
 
-  function limpiarParametrosVisita() {
-    const cliente = document.getElementById("cliente");
-    const operador = document.getElementById("operador");
-    const tipo = document.getElementById("tipo");
-
-    cliente.value = "";
-    cliente.readOnly = false;
-    operador.value = "";
-    operador.readOnly = false;
-    tipo.selectedIndex = -1;
-    tipo.disabled = false;
-
+  function quitarParametrosVisitaURL() {
     // Quitar solo los parámetros de precarga; conservar cualquier otro parámetro.
     const urlActual = new URL(window.location.href);
     urlActual.searchParams.delete("entry.51684031");
@@ -314,8 +303,28 @@
     );
   }
 
+  function limpiarParametrosVisita() {
+    const cliente = document.getElementById("cliente");
+    const operador = document.getElementById("operador");
+    const tipo = document.getElementById("tipo");
+
+    cliente.value = "";
+    cliente.defaultValue = "";
+    cliente.readOnly = false;
+    operador.value = "";
+    operador.defaultValue = "";
+    operador.readOnly = false;
+    tipo.selectedIndex = 0;
+    tipo.disabled = false;
+
+    quitarParametrosVisitaURL();
+  }
+
   if (enlaceVisitaValido) {
     aplicarParametrosVisita();
+    // Los datos ya están en los campos: retirar de inmediato la precarga de la URL.
+    // Así, una recarga no vuelve a aplicar el mismo enlace después de guardar.
+    quitarParametrosVisitaURL();
     document.getElementById("estadoUsuario").textContent =
       "Visita cargada desde WhatsApp. Cliente, operador y tipo están bloqueados.";
   } else if (hayParametrosVisita) {
