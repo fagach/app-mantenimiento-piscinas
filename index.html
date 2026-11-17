@@ -447,13 +447,18 @@ window.addEventListener("message", function(event) {
   
 
 async function recibirCredencialGoogle(respuesta) {
+  // Una credencial recién recibida no se considera válida hasta que
+  // el servidor confirme que la cuenta está autorizada.
+  idTokenGoogle = null;
+
   if (!respuesta || !respuesta.credential) {
+    document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
       "No se pudo completar la identificación de Google.";
     return;
   }
 
-  idTokenGoogle = respuesta.credential;
+  const credencialGoogle = respuesta.credential;
   actualizarEstadoSesion("Credencial recibida. Verificando autorización...");
 
   estadoUsuario.textContent =
@@ -462,24 +467,27 @@ async function recibirCredencialGoogle(respuesta) {
   try {
     const perfil = await solicitarServidor({
       accion: "consultarPerfil",
-      idToken: idTokenGoogle
+      idToken: credencialGoogle
     });
 
     const panel = document.getElementById("autorizacionFotos");
 
     if (!perfil || !perfil.ok) {
       panel.hidden = true;
+      document.getElementById("botonGoogle").hidden = false;
       actualizarEstadoSesion("Cuenta de Google no autorizada para esta PWA.");
       estadoUsuario.textContent =
         perfil?.error || "La cuenta de Google no está autorizada para usar la PWA.";
       return;
     }
 
+    // Solo desde aquí existe una sesión autorizada para sincronizar.
+    idTokenGoogle = credencialGoogle;
     actualizarEstadoSesion("Sesión de Google verificada y autorizada.");
 
     let correoGoogle = "cuenta autorizada";
     try {
-      const partesToken = idTokenGoogle.split(".");
+      const partesToken = credencialGoogle.split(".");
       const datosGoogle = JSON.parse(
         atob(partesToken[1].replace(/-/g, "+").replace(/_/g, "/"))
       );
@@ -526,7 +534,9 @@ async function recibirCredencialGoogle(respuesta) {
     await sincronizarPendientes();
 
   } catch (error) {
+    idTokenGoogle = null;
     document.getElementById("autorizacionFotos").hidden = true;
+    document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
       "No se pudo comprobar la autorización: " + error.message;
     actualizarEstadoSesion(
@@ -945,8 +955,15 @@ async function sincronizarPendientes() {
   window.addEventListener("load", inicializarGoogleIdentity);
   window.addEventListener("online", () => {
     actualizarEstadoConexion();
-    if (!idTokenGoogle) inicializarGoogleIdentity();
-    sincronizarPendientes();
+
+    // Sin una credencial ya verificada, se solicita identificación.
+    // La sincronización se inicia únicamente desde recibirCredencialGoogle
+    // después de que el servidor confirme la autorización.
+    if (idTokenGoogle) {
+      sincronizarPendientes();
+    } else {
+      inicializarGoogleIdentity();
+    }
   });
   window.addEventListener("offline", actualizarEstadoConexion);
   
