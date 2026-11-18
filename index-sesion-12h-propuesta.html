@@ -381,11 +381,6 @@ async function restaurarSesionGuardada() {
     actualizarEstadoSesion("Sin conexión. La sesión guardada se comprobará al recuperar Internet.");
     return;
   }
-  if (!sessionTokenPWA) {
-    document.getElementById("botonGoogle").hidden = false;
-    inicializarGoogleIdentity();
-    return;
-  }
   autenticacionEnCurso = true;
   actualizarEstadoSesion("Comprobando la sesión guardada...");
   try {
@@ -393,6 +388,11 @@ async function restaurarSesionGuardada() {
     if (cierrePendiente) {
       await solicitarServidor({accion:"cerrarSesion", sessionToken:cierrePendiente});
       localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+    }
+    if (!sessionTokenPWA) {
+      document.getElementById("botonGoogle").hidden = false;
+      inicializarGoogleIdentity();
+      return;
     }
     const resultado = await solicitarServidor({
       accion: "validarSesion",
@@ -411,8 +411,9 @@ async function restaurarSesionGuardada() {
     if (resultado.perfil === "Administrador") {
       document.getElementById("estadoAutorizacionFotos").textContent =
         "Para autorizar o cambiar la carpeta de Drive, vuelve a identificarte con Google.";
-      // Se mantiene visible el acceso Google para el flujo OAuth independiente del Picker.
+      // Se inicializa el botón para obtener un token OAuth fresco al usar Picker.
       document.getElementById("botonGoogle").hidden = false;
+      inicializarGoogleIdentity();
     }
     await sincronizarPendientes();
   } catch (error) {
