@@ -363,7 +363,7 @@ const scriptGoogle = document.querySelector(
 );
 if (scriptGoogle) {
   scriptGoogle.addEventListener("load", () => {
-    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+    if (db) inicializarGoogleIdentity();
   });
 }
 
