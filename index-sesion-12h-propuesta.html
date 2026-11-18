@@ -571,10 +571,7 @@ window.addEventListener("message", function(event) {
   
 
 async function recibirCredencialGoogle(respuesta) {
-  // La credencial Google solo se usa para crear/renovar la sesión propia.
-  // Nunca se guarda en localStorage ni en IndexedDB.
-  idTokenGoogle = null;
-
+  // El idToken Google vive solo en memoria. No se guarda en localStorage ni IndexedDB.
   if (!respuesta || !respuesta.credential) {
     document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
@@ -584,92 +581,99 @@ async function recibirCredencialGoogle(respuesta) {
 
   const credencialGoogle = respuesta.credential;
   actualizarEstadoSesion("Credencial recibida. Verificando autorización...");
-
   estadoUsuario.textContent =
     "Cuenta de Google identificada. Comprobando autorización...";
 
   try {
+    // Si ya existe una sesión PWA, Google OAuth se utiliza únicamente para
+    // el Picker. Nunca se crea otra sesión ni se reinician sus 12 horas.
+    if (sessionTokenPWA) {
+      const sesionActual = await solicitarServidor({
+        accion: "validarSesion",
+        sessionToken: sessionTokenPWA
+      });
+      if (!sesionActual || !sesionActual.ok || !sesionActual.valida) {
+        throw new Error(sesionActual?.error || "La sesión PWA ya no es válida.");
+      }
+
+      const identidad = await solicitarServidor({
+        accion: "consultarPerfil",
+        idToken: credencialGoogle
+      });
+      if (!identidad || !identidad.ok) {
+        throw new Error(identidad?.error || "No se pudo verificar la cuenta de Google.");
+      }
+      if (
+        String(identidad.correo || "").toLowerCase() !==
+        String(sesionActual.correo || "").toLowerCase()
+      ) {
+        throw new Error("La cuenta de Google no coincide con la sesión activa.");
+      }
+      if (
+        sesionActual.perfil !== "Administrador" ||
+        identidad.perfil !== "Administrador"
+      ) {
+        throw new Error("Solo el administrador puede autorizar la carpeta.");
+      }
+
+      perfilSesion = sesionActual;
+      idTokenGoogle = credencialGoogle;
+      document.getElementById("botonGoogle").hidden = true;
+      estadoUsuario.textContent =
+        "Cuenta de administrador verificada. Ya puedes autorizar la carpeta.";
+      actualizarEstadoSesion(
+        "Sesión PWA original conservada. El acceso de Google se usa solo para el Picker."
+      );
+      return;
+    }
+
+    // Primer inicio de sesión: aquí se crea la sesión PWA de 12 horas.
     const sesion = await solicitarServidor({
       accion: "crearSesion",
       idToken: credencialGoogle
     });
-
     if (!sesion || !sesion.ok || !sesion.sessionToken) {
       throw new Error(sesion?.error || "No se pudo crear la sesión temporal.");
     }
 
     sessionTokenPWA = sesion.sessionToken;
     localStorage.setItem(CLAVE_SESION_PWA, sessionTokenPWA);
-    const perfil = sesion;
-
-    const panel = document.getElementById("autorizacionFotos");
-
-    if (!perfil || !perfil.ok) {
-      panel.hidden = true;
-      document.getElementById("botonGoogle").hidden = false;
-      actualizarEstadoSesion("Cuenta de Google no autorizada para esta PWA.");
-      estadoUsuario.textContent =
-        perfil?.error || "La cuenta de Google no está autorizada para usar la PWA.";
-      return;
-    }
-
-    // Solo desde aquí existe una sesión autorizada para sincronizar.
+    perfilSesion = sesion;
     idTokenGoogle = credencialGoogle;
-    perfilSesion = perfil;
     document.getElementById("btnCerrarSesion").hidden = false;
     actualizarEstadoSesion("Sesión activa durante un máximo de 12 horas.");
 
-    let correoGoogle = "cuenta autorizada";
-    try {
-      const partesToken = credencialGoogle.split(".");
-      const datosGoogle = JSON.parse(
-        atob(partesToken[1].replace(/-/g, "+").replace(/_/g, "/"))
-      );
-      if (datosGoogle.email) correoGoogle = datosGoogle.email;
-    } catch (error) {
-      // La autorización del servidor ya fue confirmada.
-    }
-
+    let correoGoogle = sesion.correo || "cuenta autorizada";
     document.getElementById("botonGoogle").hidden = true;
     estadoUsuario.textContent = "Sesión iniciada como " + correoGoogle + ".";
 
-    if (perfil.perfil === "Administrador") {
+    const panel = document.getElementById("autorizacionFotos");
+    if (sesion.perfil === "Administrador") {
       panel.hidden = false;
-
       const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
-      estadoCarpeta.textContent =
-        "Consultando autorización de la carpeta...";
-
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
       try {
         const carpeta = await solicitarServidor({
           accion: "consultarCarpetaFotos",
           sessionToken: sessionTokenPWA
         });
-
         if (!carpeta || !carpeta.ok) {
-          throw new Error(
-            carpeta?.error || "No se pudo consultar la autorización."
-          );
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
         }
-
         estadoCarpeta.textContent = carpeta.autorizada
           ? "Carpeta autorizada: " + carpeta.nombre
           : "Carpeta de fotografías pendiente de autorización.";
-
       } catch (error) {
         estadoCarpeta.textContent =
           "No se pudo consultar la autorización: " + error.message;
       }
-
     } else {
       panel.hidden = true;
     }
 
     await sincronizarPendientes();
-
   } catch (error) {
-    // Un fallo al reautenticar OAuth (por ejemplo, para Picker) no debe
-    // borrar una sesión PWA de 12 horas que ya estuviera activa.
+    // Un fallo de OAuth/Picker no elimina una sesión PWA válida.
     idTokenGoogle = null;
     document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
@@ -681,7 +685,7 @@ async function recibirCredencialGoogle(respuesta) {
 }
   
 function inicializarGoogleIdentity() {
-  if (autenticacionEnCurso) return;
+  // Puede llamarse mientras se valida/restaura la sesión PWA.
   if (!navigator.onLine) {
     actualizarEstadoSesion(
       "Sesión de Google sin verificar: no hay Internet."
