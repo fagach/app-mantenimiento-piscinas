@@ -363,7 +363,9 @@ const scriptGoogle = document.querySelector(
 );
 if (scriptGoogle) {
   scriptGoogle.addEventListener("load", () => {
-    if (db) inicializarGoogleIdentity();
+    // No iniciar Google Identity si ya hay una sesión PWA guardada.
+    // El administrador lo inicializa después de validar su sesión, para usar Picker.
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
   });
 }
 
@@ -396,7 +398,15 @@ async function restaurarSesionGuardada() {
     const cierrePendiente = localStorage.getItem(CLAVE_CIERRE_PENDIENTE) || "";
     if (cierrePendiente) {
       try {
-        await solicitarServidor({accion:"cerrarSesion", sessionToken:cierrePendiente});
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: cierrePendiente
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
         localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
       } catch (error) {
         // No impedir la validación de la sesión actual por un fallo temporal.
@@ -470,7 +480,15 @@ async function cerrarSesionVoluntaria() {
   if (tokenAnterior) {
     if (navigator.onLine) {
       try {
-        await solicitarServidor({accion:"cerrarSesion", sessionToken:tokenAnterior});
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: tokenAnterior
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
         localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
       } catch (error) {
         localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
