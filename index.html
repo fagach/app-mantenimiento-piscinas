@@ -10,6 +10,11 @@
   <style>
     * { box-sizing: border-box; }
 
+    /* Evita que el gesto de arrastre hacia abajo recargue la PWA. */
+    html, body {
+      overscroll-behavior-y: none;
+    }
+
     body {
       margin: 0;
       padding: 18px;
