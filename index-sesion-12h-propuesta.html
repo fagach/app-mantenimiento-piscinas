@@ -348,6 +348,7 @@ const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
 let idTokenGoogle = null; // Solo memoria: OAuth Google para Picker.
 const CLAVE_SESION_PWA = "sesionPWA12h";
+const CLAVE_CIERRE_PENDIENTE = "sesionPWA12h_cierrePendiente";
 let sessionTokenPWA = localStorage.getItem(CLAVE_SESION_PWA) || "";
 let perfilSesion = null;
 let autenticacionEnCurso = false;
@@ -375,7 +376,7 @@ actualizarEstadoSesion(
 );
 
 async function restaurarSesionGuardada() {
-  if (autenticacionEnCurso) return;
+  if (autenticacionEnCurso || !db) return;
   if (!navigator.onLine) {
     actualizarEstadoSesion("Sin conexión. La sesión guardada se comprobará al recuperar Internet.");
     return;
@@ -388,6 +389,11 @@ async function restaurarSesionGuardada() {
   autenticacionEnCurso = true;
   actualizarEstadoSesion("Comprobando la sesión guardada...");
   try {
+    const cierrePendiente = localStorage.getItem(CLAVE_CIERRE_PENDIENTE) || "";
+    if (cierrePendiente) {
+      await solicitarServidor({accion:"cerrarSesion", sessionToken:cierrePendiente});
+      localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+    }
     const resultado = await solicitarServidor({
       accion: "validarSesion",
       sessionToken: sessionTokenPWA
@@ -435,11 +441,18 @@ async function cerrarSesionVoluntaria() {
   document.getElementById("botonGoogle").hidden = false;
   actualizarEstadoSesion("Sesión cerrada en este dispositivo.");
   estadoUsuario.textContent = "Para sincronizar nuevamente, identifícate con Google.";
-  if (navigator.onLine && tokenAnterior) {
-    try {
-      await solicitarServidor({accion:"cerrarSesion", sessionToken:tokenAnterior});
-    } catch (error) {
-      estadoUsuario.textContent += " El cierre local se completó; el servidor invalidará la sesión al vencer.";
+  if (tokenAnterior) {
+    if (navigator.onLine) {
+      try {
+        await solicitarServidor({accion:"cerrarSesion", sessionToken:tokenAnterior});
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+        estadoUsuario.textContent += " La revocación del servidor queda pendiente hasta recuperar Internet.";
+      }
+    } else {
+      localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+      estadoUsuario.textContent += " La revocación del servidor se enviará al recuperar Internet.";
     }
   }
 }
@@ -1059,7 +1072,7 @@ async function sincronizarPendientes() {
   }
   window.addEventListener("online", async () => {
     actualizarEstadoConexion();
-    await restaurarSesionGuardada();
+    if (db) await restaurarSesionGuardada();
   });
   window.addEventListener("offline", actualizarEstadoConexion);
   
