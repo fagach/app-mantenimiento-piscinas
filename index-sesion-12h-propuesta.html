@@ -358,6 +358,15 @@ const estadoSesion = document.getElementById("estadoSesion");
 const estadoConexion = document.getElementById("estadoConexion");
 let googleIdentityInicializado = false;
 
+const scriptGoogle = document.querySelector(
+  'script[src="https://accounts.google.com/gsi/client"]'
+);
+if (scriptGoogle) {
+  scriptGoogle.addEventListener("load", () => {
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
+}
+
 function actualizarEstadoConexion() {
   estadoConexion.textContent = navigator.onLine
     ? "Internet: conectado"
@@ -659,15 +668,12 @@ async function recibirCredencialGoogle(respuesta) {
     await sincronizarPendientes();
 
   } catch (error) {
+    // Un fallo al reautenticar OAuth (por ejemplo, para Picker) no debe
+    // borrar una sesión PWA de 12 horas que ya estuviera activa.
     idTokenGoogle = null;
-    sessionTokenPWA = "";
-    localStorage.removeItem(CLAVE_SESION_PWA);
-    perfilSesion = null;
-    document.getElementById("btnCerrarSesion").hidden = true;
-    document.getElementById("autorizacionFotos").hidden = true;
     document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
-      "No se pudo comprobar la autorización: " + error.message;
+      "No se pudo completar la autorización de Google: " + error.message;
     actualizarEstadoSesion(
       "No se pudo verificar el acceso con Google. Comprueba la conexión e inténtalo nuevamente."
     );
