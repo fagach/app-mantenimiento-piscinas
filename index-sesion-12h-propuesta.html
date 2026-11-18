@@ -1091,6 +1091,9 @@ async function sincronizarPendientes() {
     actualizarEstadoConexion();
     if (db) await restaurarSesionGuardada();
   });
+  window.addEventListener("load", () => {
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
   window.addEventListener("offline", actualizarEstadoConexion);
   
   
