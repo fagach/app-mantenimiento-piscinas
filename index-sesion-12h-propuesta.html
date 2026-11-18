@@ -1067,6 +1067,20 @@ async function sincronizarPendientes() {
           "No se pudo sincronizar la visita " + registro.id,
           error
         );
+
+        const mensajeError = String(error && error.message ? error.message : error);
+        if (/La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i.test(mensajeError)) {
+          sessionTokenPWA = "";
+          localStorage.removeItem(CLAVE_SESION_PWA);
+          perfilSesion = null;
+          document.getElementById("btnCerrarSesion").hidden = true;
+          document.getElementById("autorizacionFotos").hidden = true;
+          document.getElementById("botonGoogle").hidden = false;
+          actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google para continuar.");
+          estadoUsuario.textContent = mensajeError;
+          inicializarGoogleIdentity();
+          break;
+        }
       }
     }
 
