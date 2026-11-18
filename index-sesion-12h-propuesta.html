@@ -386,8 +386,13 @@ async function restaurarSesionGuardada() {
   try {
     const cierrePendiente = localStorage.getItem(CLAVE_CIERRE_PENDIENTE) || "";
     if (cierrePendiente) {
-      await solicitarServidor({accion:"cerrarSesion", sessionToken:cierrePendiente});
-      localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      try {
+        await solicitarServidor({accion:"cerrarSesion", sessionToken:cierrePendiente});
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        // No impedir la validación de la sesión actual por un fallo temporal.
+        console.warn("Revocación pendiente; se reintentará:", error);
+      }
     }
     if (!sessionTokenPWA) {
       document.getElementById("botonGoogle").hidden = false;
@@ -417,15 +422,26 @@ async function restaurarSesionGuardada() {
     }
     await sincronizarPendientes();
   } catch (error) {
-    sessionTokenPWA = "";
-    localStorage.removeItem(CLAVE_SESION_PWA);
-    perfilSesion = null;
-    document.getElementById("btnCerrarSesion").hidden = true;
-    document.getElementById("autorizacionFotos").hidden = true;
-    document.getElementById("botonGoogle").hidden = false;
-    actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google.");
-    estadoUsuario.textContent = error.message;
-    inicializarGoogleIdentity();
+    const mensaje = String(error && error.message ? error.message : error);
+    const sesionInvalidada =
+      /La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i
+        .test(mensaje);
+
+    if (sesionInvalidada) {
+      sessionTokenPWA = "";
+      localStorage.removeItem(CLAVE_SESION_PWA);
+      perfilSesion = null;
+      document.getElementById("btnCerrarSesion").hidden = true;
+      document.getElementById("autorizacionFotos").hidden = true;
+      document.getElementById("botonGoogle").hidden = false;
+      actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google.");
+      estadoUsuario.textContent = mensaje;
+      inicializarGoogleIdentity();
+    } else {
+      // Una falla temporal de red o de Sheets no debe borrar una sesión válida.
+      actualizarEstadoSesion("No se pudo comprobar la sesión por un problema temporal. Se conserva para reintentar.");
+      estadoUsuario.textContent = mensaje;
+    }
   } finally {
     autenticacionEnCurso = false;
   }
