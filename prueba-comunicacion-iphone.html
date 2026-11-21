@@ -20,14 +20,14 @@ small{color:#475569}
 <div id="estado" role="status">Iniciando…</div>
 <iframe id="puente" title="Vista del puente"
 src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"></iframe>
-<p><small>Espera 15 segundos. La vista del recuadro permite comprobar si Apps Script muestra la página del puente.</small></p>
+<p><small>Espera 15 segundos. No se envían solicitudes ni se modifican datos.</small></p>
 </main>
 <script>
 (() => {
 "use strict";
 const estado=document.getElementById("estado");
 const iframe=document.getElementById("puente");
-let autorizado=false,intentos=0,cargas=0,ultimoMensaje="ninguno",ultimoOrigen="ninguno";
+let autorizado=false,intentos=0,cargas=0,ultimoMensaje="ninguno",ultimoOrigen="ninguno",ultimoEmisor="ninguno",ultimoDato="ninguno";
 let intervalo=null,limite=null;
 function origenPermitido(origen){
  try{
@@ -35,35 +35,50 @@ function origenPermitido(origen){
   return u.protocol==="https:"&&(u.hostname==="script.google.com"||u.hostname==="script.googleusercontent.com"||u.hostname.endsWith(".script.googleusercontent.com")||u.hostname.endsWith("-script.googleusercontent.com"));
  }catch(_){return false;}
 }
+function pintar(estadoFinal){
+ estado.textContent=
+  (estadoFinal||"ESPERANDO PUENTE_LISTO")+
+  "\nIframe cargado: "+cargas+
+  "\nIntentos de saludo: "+intentos+
+  "\nÚltimo mensaje: "+ultimoMensaje+
+  "\nOrigen recibido: "+ultimoOrigen+
+  "\nEmisor = ventana del iframe: "+ultimoEmisor+
+  "\nContenido recibido: "+ultimoDato;
+}
 function iniciar(){
  if(autorizado||!iframe.contentWindow)return;
  intentos++;
  iframe.contentWindow.postMessage({tipo:"INICIAR_PUENTE"},"*");
- estado.textContent="Iframe cargado: "+cargas+"\nIntentos de saludo: "+intentos+"\nÚltimo mensaje Google: "+ultimoMensaje+"\nOrigen recibido: "+ultimoOrigen+"\nEsperando PUENTE_LISTO…";
+ pintar();
 }
 iframe.addEventListener("load",()=>{
  cargas++;
  iniciar();
 });
 iframe.addEventListener("error",()=>{
- estado.textContent="ERROR: el navegador informó que el iframe no pudo cargar.";
+ pintar("ERROR: el navegador informó que el iframe no pudo cargar.");
 });
 window.addEventListener("message",event=>{
  if(!origenPermitido(event.origin))return;
  ultimoOrigen=event.origin;
+ ultimoEmisor=event.source===iframe.contentWindow?"SÍ":"NO";
  ultimoMensaje=event.data&&event.data.tipo?String(event.data.tipo):"mensaje sin tipo";
+ try{
+  ultimoDato=typeof event.data==="string"?event.data:JSON.stringify(event.data);
+ }catch(_){ultimoDato=String(event.data);}
+ if(ultimoDato.length>300)ultimoDato=ultimoDato.slice(0,300)+"…";
  if(!event.data||event.data.tipo!=="PUENTE_LISTO"){
-  estado.textContent="Iframe cargado: "+cargas+"\nIntentos de saludo: "+intentos+"\nÚltimo mensaje Google: "+ultimoMensaje+"\nOrigen recibido: "+ultimoOrigen+"\nEsperando PUENTE_LISTO…";
+  pintar();
   return;
  }
  autorizado=true;
  clearInterval(intervalo);clearTimeout(limite);
- estado.textContent="CONEXIÓN ESTABLECIDA\nOrigen: "+event.origin+"\nTiempo: "+(performance.now()/1000).toFixed(1)+" s\nNo se enviaron solicitudes ni se modificaron datos.";
+ pintar("CONEXIÓN ESTABLECIDA");
 });
 intervalo=setInterval(iniciar,1000);
 limite=setTimeout(()=>{
  clearInterval(intervalo);
- if(!autorizado)estado.textContent="SIN RESPUESTA PUENTE_LISTO\nIframe cargado: "+cargas+"\nIntentos de saludo: "+intentos+"\nÚltimo mensaje Google: "+ultimoMensaje+"\nOrigen recibido: "+ultimoOrigen+"\nNo se enviaron solicitudes ni se modificaron datos.";
+ if(!autorizado)pintar("SIN RESPUESTA PUENTE_LISTO");
 },15000);
 })();
 </script>
