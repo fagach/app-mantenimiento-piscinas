@@ -1406,6 +1406,7 @@ const solicitudesPendientesPuente = new Map();
 let contadorSolicitudesPuente = 0;
 let resolverPuenteListo;
 let origenPuenteAutorizado = null;
+let ventanaPuenteAutorizada = null;
 let intervaloHandshakePuente = null;
 
 const promesaPuenteListo = new Promise((resolve) => {
@@ -1415,7 +1416,6 @@ const promesaPuenteListo = new Promise((resolve) => {
 function esOrigenConfiablePuente(origen) {
   try {
     const host = new URL(origen).hostname;
-
     return (
       origen.startsWith("https://") &&
       (
@@ -1432,8 +1432,7 @@ function esOrigenConfiablePuente(origen) {
 
 function iniciarHandshakePuente() {
   if (!iframePuente || !iframePuente.contentWindow) return;
-  if (origenPuenteAutorizado) return;
-
+  if (ventanaPuenteAutorizada) return;
   iframePuente.contentWindow.postMessage(
     { tipo: "INICIAR_PUENTE" },
     "*"
@@ -1452,11 +1451,12 @@ if (!iframePuente) {
 }
 
 window.addEventListener("message", function(event) {
-  if (event.source !== iframePuente.contentWindow) return;
   if (!esOrigenConfiablePuente(event.origin)) return;
   if (!event.data || typeof event.data !== "object") return;
 
   if (event.data.tipo === "PUENTE_LISTO") {
+    if (!event.source || typeof event.source.postMessage !== "function") return;
+    ventanaPuenteAutorizada = event.source;
     origenPuenteAutorizado = event.origin;
     detenerHandshakePuente();
     resolverPuenteListo();
@@ -1464,37 +1464,27 @@ window.addEventListener("message", function(event) {
   }
 
   if (event.data.tipo !== "RESPUESTA_SERVIDOR") return;
+  if (event.source !== ventanaPuenteAutorizada) return;
   if (event.origin !== origenPuenteAutorizado) return;
 
-  const pendiente =
-    solicitudesPendientesPuente.get(event.data.idSolicitud);
-
+  const pendiente = solicitudesPendientesPuente.get(event.data.idSolicitud);
   if (!pendiente) return;
 
   clearTimeout(pendiente.timeout);
   solicitudesPendientesPuente.delete(event.data.idSolicitud);
-
   pendiente.resolve(event.data.resultado);
 });
 
 iframePuente.addEventListener("load", function() {
   iniciarHandshakePuente();
-
-  if (!origenPuenteAutorizado && intervaloHandshakePuente === null) {
-    intervaloHandshakePuente = setInterval(
-      iniciarHandshakePuente,
-      1000
-    );
+  if (!ventanaPuenteAutorizada && intervaloHandshakePuente === null) {
+    intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
   }
 });
 
 iniciarHandshakePuente();
-
-if (!origenPuenteAutorizado && intervaloHandshakePuente === null) {
-  intervaloHandshakePuente = setInterval(
-    iniciarHandshakePuente,
-    1000
-  );
+if (!ventanaPuenteAutorizada) {
+  intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
 }
 
 async function solicitarServidor(solicitud) {
@@ -1506,31 +1496,30 @@ async function solicitarServidor(solicitud) {
     throw new Error("Falta la acción o la credencial de sesión.");
   }
 
-  await Promise.race([
-    promesaPuenteListo,
-    new Promise((_, reject) => {
-      setTimeout(
-        () => reject(new Error(
+  let timeoutHandshake;
+  try {
+    await Promise.race([
+      promesaPuenteListo,
+      new Promise((_, reject) => {
+        timeoutHandshake = setTimeout(() => reject(new Error(
           "No se pudo establecer comunicación con Apps Script."
-        )),
-        15000
-      );
-    })
-  ]);
+        )), 15000);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutHandshake);
+  }
 
-  if (!origenPuenteAutorizado) {
+  if (!ventanaPuenteAutorizada || !origenPuenteAutorizado) {
     throw new Error("El puente de comunicación no está autorizado.");
   }
 
-  const idSolicitud =
-    "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
+  const idSolicitud = "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
 
   return await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       solicitudesPendientesPuente.delete(idSolicitud);
-      reject(new Error(
-        "El servidor no respondió dentro del tiempo esperado."
-      ));
+      reject(new Error("El servidor no respondió dentro del tiempo esperado."));
     }, 30000);
 
     solicitudesPendientesPuente.set(idSolicitud, {
@@ -1540,14 +1529,11 @@ async function solicitarServidor(solicitud) {
     });
 
     try {
-      iframePuente.contentWindow.postMessage(
-        {
-          tipo: "SOLICITUD_SERVIDOR",
-          idSolicitud: idSolicitud,
-          solicitud: solicitud
-        },
-        origenPuenteAutorizado
-      );
+      ventanaPuenteAutorizada.postMessage({
+        tipo: "SOLICITUD_SERVIDOR",
+        idSolicitud: idSolicitud,
+        solicitud: solicitud
+      }, origenPuenteAutorizado);
     } catch (error) {
       clearTimeout(timeout);
       solicitudesPendientesPuente.delete(idSolicitud);
@@ -1555,11 +1541,8 @@ async function solicitarServidor(solicitud) {
     }
   }).then((resultado) => {
     if (!resultado || typeof resultado !== "object") {
-      throw new Error(
-        "La respuesta del servidor está vacía o no es válida."
-      );
+      throw new Error("La respuesta del servidor está vacía o no es válida.");
     }
-
     return resultado;
   });
 }
