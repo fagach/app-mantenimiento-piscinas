@@ -751,8 +751,11 @@ function inicializarGoogleIdentity() {
 
   google.accounts.id.prompt((notificacion) => {
     if (
-      notificacion.isNotDisplayed() ||
-      notificacion.isSkippedMoment()
+      !sessionTokenPWA &&
+      (
+        notificacion.isNotDisplayed() ||
+        notificacion.isSkippedMoment()
+      )
     ) {
       actualizarEstadoSesion(
         "Google no recuperó la sesión automáticamente. Puedes usar el botón para identificarte."
