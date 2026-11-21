@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer-when-downgrade">
   <meta name="theme-color" content="#075985">
   <title>App Mantenimiento Piscinas</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -135,6 +136,9 @@
   <p id="estadoUsuario" class="note" aria-live="polite">
     Debes identificarte con tu cuenta de Google para sincronizar visitas.
   </p>
+  <button type="button" class="secondary" id="btnCerrarSesion" hidden>
+    Cerrar sesión
+  </button>
 </div>
 
   <div id="autorizacionFotos" hidden>
@@ -343,12 +347,28 @@
   
 const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
-let idTokenGoogle = null;
+let idTokenGoogle = null; // Solo memoria: OAuth Google para Picker.
+const CLAVE_SESION_PWA = "sesionPWA12h";
+const CLAVE_CIERRE_PENDIENTE = "sesionPWA12h_cierrePendiente";
+let sessionTokenPWA = localStorage.getItem(CLAVE_SESION_PWA) || "";
+let perfilSesion = null;
+let autenticacionEnCurso = false;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
 const estadoSesion = document.getElementById("estadoSesion");
 const estadoConexion = document.getElementById("estadoConexion");
 let googleIdentityInicializado = false;
+
+const scriptGoogle = document.querySelector(
+  'script[src="https://accounts.google.com/gsi/client"]'
+);
+if (scriptGoogle) {
+  scriptGoogle.addEventListener("load", () => {
+    // No iniciar Google Identity si ya hay una sesión PWA guardada.
+    // El administrador lo inicializa después de validar su sesión, para usar Picker.
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
+}
 
 function actualizarEstadoConexion() {
   estadoConexion.textContent = navigator.onLine
@@ -366,6 +386,124 @@ actualizarEstadoSesion(
     ? "Verificando sesión de Google..."
     : "Sesión de Google sin verificar: no hay Internet."
 );
+
+async function restaurarSesionGuardada() {
+  if (autenticacionEnCurso || !db) return;
+  if (!navigator.onLine) {
+    actualizarEstadoSesion("Sin conexión. La sesión guardada se comprobará al recuperar Internet.");
+    return;
+  }
+  autenticacionEnCurso = true;
+  actualizarEstadoSesion("Comprobando la sesión guardada...");
+  try {
+    const cierrePendiente = localStorage.getItem(CLAVE_CIERRE_PENDIENTE) || "";
+    if (cierrePendiente) {
+      try {
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: cierrePendiente
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        // No impedir la validación de la sesión actual por un fallo temporal.
+        console.warn("Revocación pendiente; se reintentará:", error);
+      }
+    }
+    if (!sessionTokenPWA) {
+      document.getElementById("botonGoogle").hidden = false;
+      inicializarGoogleIdentity();
+      return;
+    }
+    const resultado = await solicitarServidor({
+      accion: "validarSesion",
+      sessionToken: sessionTokenPWA
+    });
+    if (!resultado || !resultado.ok || !resultado.valida) {
+      throw new Error(resultado?.error || "La sesión ya no es válida.");
+    }
+    perfilSesion = resultado;
+    document.getElementById("botonGoogle").hidden = true;
+    document.getElementById("btnCerrarSesion").hidden = false;
+    document.getElementById("autorizacionFotos").hidden =
+      resultado.perfil !== "Administrador";
+    estadoUsuario.textContent = "Sesión recuperada: " + resultado.correo + ".";
+    actualizarEstadoSesion("Sesión activa. Vence a las 12 horas de su creación.");
+    if (resultado.perfil === "Administrador") {
+      document.getElementById("estadoAutorizacionFotos").textContent =
+        "Para autorizar o cambiar la carpeta de Drive, vuelve a identificarte con Google.";
+      // Se inicializa el botón para obtener un token OAuth fresco al usar Picker.
+      document.getElementById("botonGoogle").hidden = false;
+      inicializarGoogleIdentity();
+    }
+    await sincronizarPendientes();
+  } catch (error) {
+    const mensaje = String(error && error.message ? error.message : error);
+    const sesionInvalidada =
+      /La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i
+        .test(mensaje);
+
+    if (sesionInvalidada) {
+      sessionTokenPWA = "";
+      localStorage.removeItem(CLAVE_SESION_PWA);
+      perfilSesion = null;
+      document.getElementById("btnCerrarSesion").hidden = true;
+      document.getElementById("autorizacionFotos").hidden = true;
+      document.getElementById("botonGoogle").hidden = false;
+      actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google.");
+      estadoUsuario.textContent = mensaje;
+      inicializarGoogleIdentity();
+    } else {
+      // Una falla temporal de red o de Sheets no debe borrar una sesión válida.
+      actualizarEstadoSesion("No se pudo comprobar la sesión por un problema temporal. Se conserva para reintentar.");
+      estadoUsuario.textContent = mensaje;
+    }
+  } finally {
+    autenticacionEnCurso = false;
+  }
+}
+
+async function cerrarSesionVoluntaria() {
+  const tokenAnterior = sessionTokenPWA;
+  sessionTokenPWA = "";
+  localStorage.removeItem(CLAVE_SESION_PWA);
+  idTokenGoogle = null;
+  perfilSesion = null;
+  document.getElementById("btnCerrarSesion").hidden = true;
+  document.getElementById("autorizacionFotos").hidden = true;
+  document.getElementById("botonGoogle").hidden = false;
+  actualizarEstadoSesion("Sesión cerrada en este dispositivo.");
+  estadoUsuario.textContent = "Para sincronizar nuevamente, identifícate con Google.";
+  if (tokenAnterior) {
+    if (navigator.onLine) {
+      try {
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: tokenAnterior
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+        estadoUsuario.textContent += " La revocación del servidor queda pendiente hasta recuperar Internet.";
+      }
+    } else {
+      localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+      estadoUsuario.textContent += " La revocación del servidor se enviará al recuperar Internet.";
+    }
+  }
+}
+
+document.getElementById("btnCerrarSesion")
+  .addEventListener("click", cerrarSesionVoluntaria);
 
 function iniciarAutorizacionCarpeta() {
   if (!idTokenGoogle) {
@@ -452,10 +590,7 @@ window.addEventListener("message", function(event) {
   
 
 async function recibirCredencialGoogle(respuesta) {
-  // Una credencial recién recibida no se considera válida hasta que
-  // el servidor confirme que la cuenta está autorizada.
-  idTokenGoogle = null;
-
+  // El idToken Google vive solo en memoria. No se guarda en localStorage ni IndexedDB.
   if (!respuesta || !respuesta.credential) {
     document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
@@ -465,85 +600,103 @@ async function recibirCredencialGoogle(respuesta) {
 
   const credencialGoogle = respuesta.credential;
   actualizarEstadoSesion("Credencial recibida. Verificando autorización...");
-
   estadoUsuario.textContent =
     "Cuenta de Google identificada. Comprobando autorización...";
 
   try {
-    const perfil = await solicitarServidor({
-      accion: "consultarPerfil",
-      idToken: credencialGoogle
-    });
+    // Si ya existe una sesión PWA, Google OAuth se utiliza únicamente para
+    // el Picker. Nunca se crea otra sesión ni se reinician sus 12 horas.
+    if (sessionTokenPWA) {
+      const sesionActual = await solicitarServidor({
+        accion: "validarSesion",
+        sessionToken: sessionTokenPWA
+      });
+      if (!sesionActual || !sesionActual.ok || !sesionActual.valida) {
+        throw new Error(sesionActual?.error || "La sesión PWA ya no es válida.");
+      }
 
-    const panel = document.getElementById("autorizacionFotos");
+      const identidad = await solicitarServidor({
+        accion: "consultarPerfil",
+        idToken: credencialGoogle
+      });
+      if (!identidad || !identidad.ok) {
+        throw new Error(identidad?.error || "No se pudo verificar la cuenta de Google.");
+      }
+      if (
+        String(identidad.correo || "").toLowerCase() !==
+        String(sesionActual.correo || "").toLowerCase()
+      ) {
+        throw new Error("La cuenta de Google no coincide con la sesión activa.");
+      }
+      if (
+        sesionActual.perfil !== "Administrador" ||
+        identidad.perfil !== "Administrador"
+      ) {
+        throw new Error("Solo el administrador puede autorizar la carpeta.");
+      }
 
-    if (!perfil || !perfil.ok) {
-      panel.hidden = true;
-      document.getElementById("botonGoogle").hidden = false;
-      actualizarEstadoSesion("Cuenta de Google no autorizada para esta PWA.");
+      perfilSesion = sesionActual;
+      idTokenGoogle = credencialGoogle;
+      document.getElementById("botonGoogle").hidden = true;
       estadoUsuario.textContent =
-        perfil?.error || "La cuenta de Google no está autorizada para usar la PWA.";
+        "Cuenta de administrador verificada. Ya puedes autorizar la carpeta.";
+      actualizarEstadoSesion(
+        "Sesión PWA original conservada. El acceso de Google se usa solo para el Picker."
+      );
       return;
     }
 
-    // Solo desde aquí existe una sesión autorizada para sincronizar.
-    idTokenGoogle = credencialGoogle;
-    actualizarEstadoSesion("Sesión de Google verificada y autorizada.");
-
-    let correoGoogle = "cuenta autorizada";
-    try {
-      const partesToken = credencialGoogle.split(".");
-      const datosGoogle = JSON.parse(
-        atob(partesToken[1].replace(/-/g, "+").replace(/_/g, "/"))
-      );
-      if (datosGoogle.email) correoGoogle = datosGoogle.email;
-    } catch (error) {
-      // La autorización del servidor ya fue confirmada.
+    // Primer inicio de sesión: aquí se crea la sesión PWA de 12 horas.
+    const sesion = await solicitarServidor({
+      accion: "crearSesion",
+      idToken: credencialGoogle
+    });
+    if (!sesion || !sesion.ok || !sesion.sessionToken) {
+      throw new Error(sesion?.error || "No se pudo crear la sesión temporal.");
     }
 
+    sessionTokenPWA = sesion.sessionToken;
+    localStorage.setItem(CLAVE_SESION_PWA, sessionTokenPWA);
+    perfilSesion = sesion;
+    idTokenGoogle = credencialGoogle;
+    document.getElementById("btnCerrarSesion").hidden = false;
+    actualizarEstadoSesion("Sesión activa durante un máximo de 12 horas.");
+
+    let correoGoogle = sesion.correo || "cuenta autorizada";
     document.getElementById("botonGoogle").hidden = true;
     estadoUsuario.textContent = "Sesión iniciada como " + correoGoogle + ".";
 
-    if (perfil.perfil === "Administrador") {
+    const panel = document.getElementById("autorizacionFotos");
+    if (sesion.perfil === "Administrador") {
       panel.hidden = false;
-
       const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
-      estadoCarpeta.textContent =
-        "Consultando autorización de la carpeta...";
-
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
       try {
         const carpeta = await solicitarServidor({
           accion: "consultarCarpetaFotos",
-          idToken: idTokenGoogle
+          sessionToken: sessionTokenPWA
         });
-
         if (!carpeta || !carpeta.ok) {
-          throw new Error(
-            carpeta?.error || "No se pudo consultar la autorización."
-          );
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
         }
-
         estadoCarpeta.textContent = carpeta.autorizada
           ? "Carpeta autorizada: " + carpeta.nombre
           : "Carpeta de fotografías pendiente de autorización.";
-
       } catch (error) {
         estadoCarpeta.textContent =
           "No se pudo consultar la autorización: " + error.message;
       }
-
     } else {
       panel.hidden = true;
     }
 
     await sincronizarPendientes();
-
   } catch (error) {
+    // Un fallo de OAuth/Picker no elimina una sesión PWA válida.
     idTokenGoogle = null;
-    document.getElementById("autorizacionFotos").hidden = true;
     document.getElementById("botonGoogle").hidden = false;
     estadoUsuario.textContent =
-      "No se pudo comprobar la autorización: " + error.message;
+      "No se pudo completar la autorización de Google: " + error.message;
     actualizarEstadoSesion(
       "No se pudo verificar el acceso con Google. Comprueba la conexión e inténtalo nuevamente."
     );
@@ -551,6 +704,7 @@ async function recibirCredencialGoogle(respuesta) {
 }
   
 function inicializarGoogleIdentity() {
+  // Puede llamarse mientras se valida/restaura la sesión PWA.
   if (!navigator.onLine) {
     actualizarEstadoSesion(
       "Sesión de Google sin verificar: no hay Internet."
@@ -573,7 +727,11 @@ function inicializarGoogleIdentity() {
 
   google.accounts.id.initialize({
     client_id: ID_CLIENTE_OAUTH,
-    callback: recibirCredencialGoogle,
+    callback: async (respuesta) => {
+      autenticacionEnCurso = true;
+      try { await recibirCredencialGoogle(respuesta); }
+      finally { autenticacionEnCurso = false; }
+    },
     auto_select: true
   });
 
@@ -589,12 +747,17 @@ function inicializarGoogleIdentity() {
   );
 
   googleIdentityInicializado = true;
-  actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+  if (!sessionTokenPWA) {
+    actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+  }
 
   google.accounts.id.prompt((notificacion) => {
     if (
-      notificacion.isNotDisplayed() ||
-      notificacion.isSkippedMoment()
+      !sessionTokenPWA &&
+      (
+        notificacion.isNotDisplayed() ||
+        notificacion.isSkippedMoment()
+      )
     ) {
       actualizarEstadoSesion(
         "Google no recuperó la sesión automáticamente. Puedes usar el botón para identificarte."
@@ -823,12 +986,13 @@ function convertirFotoBase64(archivo) {
 
 async function subirFotoDrive(archivo) {
   if (!archivo) return "";
+  if (!sessionTokenPWA) throw new Error("La sesión venció. Identifícate nuevamente.");
 
   const datosBase64 = await convertirFotoBase64(archivo);
 
   const resultado = await solicitarServidor({
     accion: "guardarFoto",
-    idToken: idTokenGoogle,
+    sessionToken: sessionTokenPWA,
     datosBase64: datosBase64,
     nombreOriginal: archivo.name,
     tipoMime: archivo.type
@@ -848,7 +1012,7 @@ async function subirFotoDrive(archivo) {
   
 
 async function sincronizarPendientes() {
-  if (!idTokenGoogle) {
+  if (!sessionTokenPWA) {
     estado.textContent =
       "Visita guardada localmente. Identifícate con Google para sincronizar.";
     return;
@@ -885,7 +1049,7 @@ async function sincronizarPendientes() {
 
         const resultado = await solicitarServidor({
           accion: "guardarVisita",
-          idToken: idTokenGoogle,
+          sessionToken: sessionTokenPWA,
           visita: {
             id: registro.id,
             fecha: registro.fecha,
@@ -931,6 +1095,20 @@ async function sincronizarPendientes() {
           "No se pudo sincronizar la visita " + registro.id,
           error
         );
+
+        const mensajeError = String(error && error.message ? error.message : error);
+        if (/La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i.test(mensajeError)) {
+          sessionTokenPWA = "";
+          localStorage.removeItem(CLAVE_SESION_PWA);
+          perfilSesion = null;
+          document.getElementById("btnCerrarSesion").hidden = true;
+          document.getElementById("autorizacionFotos").hidden = true;
+          document.getElementById("botonGoogle").hidden = false;
+          actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google para continuar.");
+          estadoUsuario.textContent = mensajeError;
+          inicializarGoogleIdentity();
+          break;
+        }
       }
     }
 
@@ -957,18 +1135,12 @@ async function sincronizarPendientes() {
     }
     return migrados;
   }
-  window.addEventListener("load", inicializarGoogleIdentity);
-  window.addEventListener("online", () => {
+  window.addEventListener("online", async () => {
     actualizarEstadoConexion();
-
-    // Sin una credencial ya verificada, se solicita identificación.
-    // La sincronización se inicia únicamente desde recibirCredencialGoogle
-    // después de que el servidor confirme la autorización.
-    if (idTokenGoogle) {
-      sincronizarPendientes();
-    } else {
-      inicializarGoogleIdentity();
-    }
+    if (db) await restaurarSesionGuardada();
+  });
+  window.addEventListener("load", () => {
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
   });
   window.addEventListener("offline", actualizarEstadoConexion);
   
@@ -1188,7 +1360,7 @@ async function mostrarRegistros() {
       db = await abrirDB();
       const migrados = await migrarRegistrosAntiguos();
       await mostrarRegistros();
-      await sincronizarPendientes();
+      await restaurarSesionGuardada();
       estado.textContent = migrados
         ? `Almacenamiento preparado. Se copiaron ${migrados} registro(s) anteriores.`
         : "Almacenamiento local preparado. Las nuevas visitas se guardarán en IndexedDB.";
@@ -1210,6 +1382,12 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
+<iframe
+  id="iframePuente"
+  title="Comunicación segura con Apps Script"
+  src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"
+  hidden>
+</iframe>  
 <div id="contenedorPicker" hidden>
   <iframe
     id="iframePicker"
@@ -1222,45 +1400,158 @@ if ("serviceWorker" in navigator) {
   
 <script>
   const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbzjEy-Ob3XbdAq_STVLVNjaohz5AT0Vw4S3yuAD43VEp1UrRik0l_E59CFSqKFHGejN/exec";
+    "https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec";
 
   // Comunicación directa con Apps Script mediante POST.
   // El servidor valida el idToken y autoriza cada acción.
-  async function solicitarServidor(solicitud) {
-    if (!solicitud || !solicitud.accion || !solicitud.idToken) {
-      throw new Error("Faltan la acción o la identificación de Google.");
-    }
 
-    const respuesta = await fetch(URL_SERVIDOR, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify(solicitud)
+  
+const iframePuente = document.getElementById("iframePuente");
+const solicitudesPendientesPuente = new Map();
+
+let contadorSolicitudesPuente = 0;
+let resolverPuenteListo;
+let origenPuenteAutorizado = null;
+let ventanaPuenteAutorizada = null;
+let intervaloHandshakePuente = null;
+
+const promesaPuenteListo = new Promise((resolve) => {
+  resolverPuenteListo = resolve;
+});
+
+function esOrigenConfiablePuente(origen) {
+  try {
+    const host = new URL(origen).hostname;
+    return (
+      origen.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
+      )
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function iniciarHandshakePuente() {
+  if (!iframePuente || !iframePuente.contentWindow) return;
+  if (ventanaPuenteAutorizada) return;
+  iframePuente.contentWindow.postMessage(
+    { tipo: "INICIAR_PUENTE" },
+    "*"
+  );
+}
+
+function detenerHandshakePuente() {
+  if (intervaloHandshakePuente !== null) {
+    clearInterval(intervaloHandshakePuente);
+    intervaloHandshakePuente = null;
+  }
+}
+
+if (!iframePuente) {
+  throw new Error("No se encontró el iframe de comunicación con Apps Script.");
+}
+
+window.addEventListener("message", function(event) {
+  if (!esOrigenConfiablePuente(event.origin)) return;
+  if (!event.data || typeof event.data !== "object") return;
+
+  if (event.data.tipo === "PUENTE_LISTO") {
+    if (!event.source || typeof event.source.postMessage !== "function") return;
+    ventanaPuenteAutorizada = event.source;
+    origenPuenteAutorizado = event.origin;
+    detenerHandshakePuente();
+    resolverPuenteListo();
+    return;
+  }
+
+  if (event.data.tipo !== "RESPUESTA_SERVIDOR") return;
+  if (event.source !== ventanaPuenteAutorizada) return;
+  if (event.origin !== origenPuenteAutorizado) return;
+
+  const pendiente = solicitudesPendientesPuente.get(event.data.idSolicitud);
+  if (!pendiente) return;
+
+  clearTimeout(pendiente.timeout);
+  solicitudesPendientesPuente.delete(event.data.idSolicitud);
+  pendiente.resolve(event.data.resultado);
+});
+
+iframePuente.addEventListener("load", function() {
+  iniciarHandshakePuente();
+  if (!ventanaPuenteAutorizada && intervaloHandshakePuente === null) {
+    intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
+  }
+});
+
+iniciarHandshakePuente();
+if (!ventanaPuenteAutorizada) {
+  intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
+}
+
+async function solicitarServidor(solicitud) {
+  if (
+    !solicitud ||
+    !solicitud.accion ||
+    (!solicitud.idToken && !solicitud.sessionToken)
+  ) {
+    throw new Error("Falta la acción o la credencial de sesión.");
+  }
+
+  let timeoutHandshake;
+  try {
+    await Promise.race([
+      promesaPuenteListo,
+      new Promise((_, reject) => {
+        timeoutHandshake = setTimeout(() => reject(new Error(
+          "No se pudo establecer comunicación con Apps Script."
+        )), 15000);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutHandshake);
+  }
+
+  if (!ventanaPuenteAutorizada || !origenPuenteAutorizado) {
+    throw new Error("El puente de comunicación no está autorizado.");
+  }
+
+  const idSolicitud = "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
+
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(new Error("El servidor no respondió dentro del tiempo esperado."));
+    }, 30000);
+
+    solicitudesPendientesPuente.set(idSolicitud, {
+      resolve: resolve,
+      reject: reject,
+      timeout: timeout
     });
 
-    if (!respuesta.ok) {
-      throw new Error(
-        "El servidor respondió con estado HTTP " + respuesta.status + "."
-      );
-    }
-
-    let resultado;
-
     try {
-      resultado = await respuesta.json();
+      ventanaPuenteAutorizada.postMessage({
+        tipo: "SOLICITUD_SERVIDOR",
+        idSolicitud: idSolicitud,
+        solicitud: solicitud
+      }, origenPuenteAutorizado);
     } catch (error) {
-      throw new Error(
-        "El servidor no devolvió una respuesta JSON válida."
-      );
+      clearTimeout(timeout);
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(error);
     }
-
+  }).then((resultado) => {
     if (!resultado || typeof resultado !== "object") {
       throw new Error("La respuesta del servidor está vacía o no es válida.");
     }
-
     return resultado;
-  }
+  });
+}
 </script>
 
 </body>
