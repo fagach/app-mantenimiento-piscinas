@@ -32,13 +32,15 @@ src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99Zzw
   let intervalo = null;
   let limite = null;
 
+  // Mantiene la misma lista de orígenes confiables que utiliza la PWA.
   function origenPermitido(origen) {
     try {
       const u = new URL(origen);
       return u.protocol === "https:" &&
         (u.hostname === "script.google.com" ||
          u.hostname === "script.googleusercontent.com" ||
-         u.hostname.endsWith(".script.googleusercontent.com"));
+         u.hostname.endsWith(".script.googleusercontent.com") ||
+         u.hostname.endsWith("-script.googleusercontent.com"));
     } catch (_) { return false; }
   }
 
@@ -50,7 +52,8 @@ src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99Zzw
   }
 
   window.addEventListener("message", event => {
-    if (event.source !== iframe.contentWindow) return;
+    // Apps Script puede responder desde un marco interno de su HTML Service.
+    // Se valida el origen confiable, igual que en el listener de la PWA.
     if (!origenPermitido(event.origin)) return;
     if (!event.data || event.data.tipo !== "PUENTE_LISTO") return;
     autorizado = true;
