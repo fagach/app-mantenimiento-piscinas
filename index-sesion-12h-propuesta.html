@@ -1376,6 +1376,12 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
+<iframe
+  id="iframePuente"
+  title="Comunicación segura con Apps Script"
+  src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"
+  hidden>
+</iframe>  
 <div id="contenedorPicker" hidden>
   <iframe
     id="iframePicker"
@@ -1392,42 +1398,171 @@ if ("serviceWorker" in navigator) {
 
   // Comunicación directa con Apps Script mediante POST.
   // El servidor valida el idToken y autoriza cada acción.
-  async function solicitarServidor(solicitud) {
-    if (!solicitud || !solicitud.accion ||
-        (!solicitud.idToken && !solicitud.sessionToken)) {
-      throw new Error("Falta la acción o la credencial de sesión.");
-    }
 
-    const respuesta = await fetch(URL_SERVIDOR, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify(solicitud)
+  
+const iframePuente = document.getElementById("iframePuente");
+const solicitudesPendientesPuente = new Map();
+
+let contadorSolicitudesPuente = 0;
+let resolverPuenteListo;
+let origenPuenteAutorizado = null;
+let intervaloHandshakePuente = null;
+
+const promesaPuenteListo = new Promise((resolve) => {
+  resolverPuenteListo = resolve;
+});
+
+function esOrigenConfiablePuente(origen) {
+  try {
+    const host = new URL(origen).hostname;
+
+    return (
+      origen.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
+      )
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function iniciarHandshakePuente() {
+  if (!iframePuente || !iframePuente.contentWindow) return;
+  if (origenPuenteAutorizado) return;
+
+  iframePuente.contentWindow.postMessage(
+    { tipo: "INICIAR_PUENTE" },
+    "*"
+  );
+}
+
+function detenerHandshakePuente() {
+  if (intervaloHandshakePuente !== null) {
+    clearInterval(intervaloHandshakePuente);
+    intervaloHandshakePuente = null;
+  }
+}
+
+if (!iframePuente) {
+  throw new Error("No se encontró el iframe de comunicación con Apps Script.");
+}
+
+window.addEventListener("message", function(event) {
+  if (event.source !== iframePuente.contentWindow) return;
+  if (!esOrigenConfiablePuente(event.origin)) return;
+  if (!event.data || typeof event.data !== "object") return;
+
+  if (event.data.tipo === "PUENTE_LISTO") {
+    origenPuenteAutorizado = event.origin;
+    detenerHandshakePuente();
+    resolverPuenteListo();
+    return;
+  }
+
+  if (event.data.tipo !== "RESPUESTA_SERVIDOR") return;
+  if (event.origin !== origenPuenteAutorizado) return;
+
+  const pendiente =
+    solicitudesPendientesPuente.get(event.data.idSolicitud);
+
+  if (!pendiente) return;
+
+  clearTimeout(pendiente.timeout);
+  solicitudesPendientesPuente.delete(event.data.idSolicitud);
+
+  pendiente.resolve(event.data.resultado);
+});
+
+iframePuente.addEventListener("load", function() {
+  iniciarHandshakePuente();
+
+  if (!origenPuenteAutorizado && intervaloHandshakePuente === null) {
+    intervaloHandshakePuente = setInterval(
+      iniciarHandshakePuente,
+      1000
+    );
+  }
+});
+
+iniciarHandshakePuente();
+
+if (!origenPuenteAutorizado && intervaloHandshakePuente === null) {
+  intervaloHandshakePuente = setInterval(
+    iniciarHandshakePuente,
+    1000
+  );
+}
+
+async function solicitarServidor(solicitud) {
+  if (
+    !solicitud ||
+    !solicitud.accion ||
+    (!solicitud.idToken && !solicitud.sessionToken)
+  ) {
+    throw new Error("Falta la acción o la credencial de sesión.");
+  }
+
+  await Promise.race([
+    promesaPuenteListo,
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error(
+          "No se pudo establecer comunicación con Apps Script."
+        )),
+        15000
+      );
+    })
+  ]);
+
+  if (!origenPuenteAutorizado) {
+    throw new Error("El puente de comunicación no está autorizado.");
+  }
+
+  const idSolicitud =
+    "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
+
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(new Error(
+        "El servidor no respondió dentro del tiempo esperado."
+      ));
+    }, 30000);
+
+    solicitudesPendientesPuente.set(idSolicitud, {
+      resolve: resolve,
+      reject: reject,
+      timeout: timeout
     });
 
-    if (!respuesta.ok) {
-      throw new Error(
-        "El servidor respondió con estado HTTP " + respuesta.status + "."
-      );
-    }
-
-    let resultado;
-
     try {
-      resultado = await respuesta.json();
-    } catch (error) {
-      throw new Error(
-        "El servidor no devolvió una respuesta JSON válida."
+      iframePuente.contentWindow.postMessage(
+        {
+          tipo: "SOLICITUD_SERVIDOR",
+          idSolicitud: idSolicitud,
+          solicitud: solicitud
+        },
+        origenPuenteAutorizado
       );
+    } catch (error) {
+      clearTimeout(timeout);
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(error);
     }
-
+  }).then((resultado) => {
     if (!resultado || typeof resultado !== "object") {
-      throw new Error("La respuesta del servidor está vacía o no es válida.");
+      throw new Error(
+        "La respuesta del servidor está vacía o no es válida."
+      );
     }
 
     return resultado;
-  }
+  });
+}
 </script>
 
 </body>
