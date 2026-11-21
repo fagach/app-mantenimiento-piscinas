@@ -1410,14 +1410,19 @@ const iframePuente = document.getElementById("iframePuente");
 const solicitudesPendientesPuente = new Map();
 
 let contadorSolicitudesPuente = 0;
-let resolverPuenteListo;
+let resolverPuenteListo = null;
+let promesaPuenteListo;
 let origenPuenteAutorizado = null;
 let ventanaPuenteAutorizada = null;
 let intervaloHandshakePuente = null;
 
-const promesaPuenteListo = new Promise((resolve) => {
-  resolverPuenteListo = resolve;
-});
+function crearPromesaPuenteListo() {
+  promesaPuenteListo = new Promise((resolve) => {
+    resolverPuenteListo = resolve;
+  });
+}
+
+crearPromesaPuenteListo();
 
 function esOrigenConfiablePuente(origen) {
   try {
@@ -1465,7 +1470,10 @@ window.addEventListener("message", function(event) {
     ventanaPuenteAutorizada = event.source;
     origenPuenteAutorizado = event.origin;
     detenerHandshakePuente();
-    resolverPuenteListo();
+    if (resolverPuenteListo) {
+      resolverPuenteListo();
+      resolverPuenteListo = null;
+    }
     return;
   }
 
@@ -1482,8 +1490,14 @@ window.addEventListener("message", function(event) {
 });
 
 iframePuente.addEventListener("load", function() {
+  // Cada carga del iframe invalida la autorización anterior:
+  // Apps Script puede redirigir a un origen distinto al volver a cargar.
+  ventanaPuenteAutorizada = null;
+  origenPuenteAutorizado = null;
+  crearPromesaPuenteListo();
+
   iniciarHandshakePuente();
-  if (!ventanaPuenteAutorizada && intervaloHandshakePuente === null) {
+  if (intervaloHandshakePuente === null) {
     intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
   }
 });
