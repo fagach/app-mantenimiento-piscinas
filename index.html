@@ -1490,8 +1490,15 @@ window.addEventListener("message", function(event) {
 });
 
 iframePuente.addEventListener("load", function() {
-  // Cada carga del iframe invalida la autorización anterior:
-  // Apps Script puede redirigir a un origen distinto al volver a cargar.
+  // Despierta solicitudes que esperaban el handshake anterior.
+  // Al continuar, comprobarán y esperarán la nueva promesa.
+  if (resolverPuenteListo) {
+    resolverPuenteListo();
+    resolverPuenteListo = null;
+  }
+
+  // Cada carga invalida la autorización anterior: Apps Script puede
+  // redirigir a un origen distinto al volver a cargar.
   ventanaPuenteAutorizada = null;
   origenPuenteAutorizado = null;
   crearPromesaPuenteListo();
@@ -1516,22 +1523,26 @@ async function solicitarServidor(solicitud) {
     throw new Error("Falta la acción o la credencial de sesión.");
   }
 
-  let timeoutHandshake;
-  try {
-    await Promise.race([
-      promesaPuenteListo,
-      new Promise((_, reject) => {
-        timeoutHandshake = setTimeout(() => reject(new Error(
-          "No se pudo establecer comunicación con Apps Script."
-        )), 15000);
-      })
-    ]);
-  } finally {
-    clearTimeout(timeoutHandshake);
-  }
+  const inicioEsperaHandshake = Date.now();
+  while (!ventanaPuenteAutorizada || !origenPuenteAutorizado) {
+    const restante = 15000 - (Date.now() - inicioEsperaHandshake);
+    if (restante <= 0) {
+      throw new Error("No se pudo establecer comunicación con Apps Script.");
+    }
 
-  if (!ventanaPuenteAutorizada || !origenPuenteAutorizado) {
-    throw new Error("El puente de comunicación no está autorizado.");
+    let timeoutHandshake;
+    try {
+      await Promise.race([
+        promesaPuenteListo,
+        new Promise((_, reject) => {
+          timeoutHandshake = setTimeout(() => reject(new Error(
+            "No se pudo establecer comunicación con Apps Script."
+          )), restante);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeoutHandshake);
+    }
   }
 
   const idSolicitud = "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
