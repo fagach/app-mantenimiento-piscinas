@@ -747,7 +747,9 @@ function inicializarGoogleIdentity() {
   );
 
   googleIdentityInicializado = true;
-  actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+  if (!sessionTokenPWA) {
+    actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+  }
 
   google.accounts.id.prompt((notificacion) => {
     if (
