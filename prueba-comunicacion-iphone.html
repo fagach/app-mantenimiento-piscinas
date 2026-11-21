@@ -3,83 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Prueba aislada de comunicación</title>
+<title>Diagnóstico de comunicación</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f1f5f9;color:#172033;padding:18px;line-height:1.5}
-main{max-width:520px;margin:auto;background:#fff;padding:22px;border-radius:14px}
+main{max-width:560px;margin:auto;background:#fff;padding:22px;border-radius:14px}
 h1{font-size:22px;color:#075985}
-#estado{padding:14px;background:#e0f2fe;border-radius:8px;overflow-wrap:anywhere}
+#estado{padding:14px;background:#e0f2fe;border-radius:8px;overflow-wrap:anywhere;white-space:pre-line}
+iframe{display:block;width:100%;height:125px;border:1px solid #94a3b8;border-radius:8px;margin-top:12px}
 small{color:#475569}
 </style>
 </head>
 <body>
 <main>
-<h1>Prueba de comunicación — iPhone</h1>
-<p>Esta página comprueba únicamente si el navegador puede establecer el saludo técnico con Apps Script.</p>
-<p><strong>No inicia sesión, no lee ni modifica visitas, no abre Google Drive y no envía datos.</strong></p>
-<div id="estado" role="status">Iniciando comprobación…</div>
-<p><small>La prueba termina automáticamente en 15 segundos. No cierres ni recargues la página durante ese tiempo.</small></p>
-</main>
-<iframe id="puente" title="Conexión técnica" hidden
+<h1>Diagnóstico de comunicación — iPhone</h1>
+<p>Esta prueba solo carga el puente y comprueba el saludo técnico. No inicia sesión ni envía solicitudes, visitas o fotografías.</p>
+<div id="estado" role="status">Iniciando…</div>
+<iframe id="puente" title="Vista del puente"
 src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"></iframe>
+<p><small>Espera 15 segundos. La vista del recuadro permite comprobar si Apps Script muestra la página del puente.</small></p>
+</main>
 <script>
 (() => {
-  "use strict";
-  const estado = document.getElementById("estado");
-  const iframe = document.getElementById("puente");
-  let autorizado = false;
-  let intentos = 0;
-  let intervalo = null;
-  let limite = null;
-
-  // Mantiene la misma lista de orígenes confiables que utiliza la PWA.
-  function origenPermitido(origen) {
-    try {
-      const u = new URL(origen);
-      return u.protocol === "https:" &&
-        (u.hostname === "script.google.com" ||
-         u.hostname === "script.googleusercontent.com" ||
-         u.hostname.endsWith(".script.googleusercontent.com") ||
-         u.hostname.endsWith("-script.googleusercontent.com"));
-    } catch (_) { return false; }
-  }
-
-  function iniciar() {
-    if (autorizado || !iframe.contentWindow) return;
-    intentos++;
-    iframe.contentWindow.postMessage({tipo:"INICIAR_PUENTE"}, "*");
-    estado.textContent = "Esperando respuesta del puente… Intento " + intentos;
-  }
-
-  window.addEventListener("message", event => {
-    // Apps Script puede responder desde un marco interno de su HTML Service.
-    // Se valida el origen confiable, igual que en el listener de la PWA.
-    if (!origenPermitido(event.origin)) return;
-    if (!event.data || event.data.tipo !== "PUENTE_LISTO") return;
-    autorizado = true;
-    clearInterval(intervalo);
-    clearTimeout(limite);
-    estado.textContent =
-      "RESULTADO: CONEXIÓN ESTABLECIDA. El puente respondió desde " +
-      event.origin + ". Tiempo: " + Math.round(performance.now()/100)/10 +
-      " segundos. No se enviaron solicitudes ni se modificaron datos.";
-  });
-
-  iframe.addEventListener("load", () => {
-    if (autorizado) return;
-    iniciar();
-  });
-
-  intervalo = setInterval(iniciar, 1000);
-  limite = setTimeout(() => {
-    clearInterval(intervalo);
-    if (!autorizado) {
-      estado.textContent =
-        "RESULTADO: NO SE RECIBIÓ PUENTE_LISTO en 15 segundos. " +
-        "No se enviaron solicitudes ni se modificaron datos.";
-    }
-  }, 15000);
-  iniciar();
+"use strict";
+const estado=document.getElementById("estado");
+const iframe=document.getElementById("puente");
+let autorizado=false,intentos=0,cargas=0,ultimoMensaje="ninguno",ultimoOrigen="ninguno";
+let intervalo=null,limite=null;
+function origenPermitido(origen){
+ try{
+  const u=new URL(origen);
+  return u.protocol==="https:"&&(u.hostname==="script.google.com"||u.hostname==="script.googleusercontent.com"||u.hostname.endsWith(".script.googleusercontent.com")||u.hostname.endsWith("-script.googleusercontent.com"));
+ }catch(_){return false;}
+}
+function iniciar(){
+ if(autorizado||!iframe.contentWindow)return;
+ intentos++;
+ iframe.contentWindow.postMessage({tipo:"INICIAR_PUENTE"},"*");
+ estado.textContent="Iframe cargado: "+cargas+"\nIntentos de saludo: "+intentos+"\nÚltimo mensaje Google: "+ultimoMensaje+"\nOrigen recibido: "+ultimoOrigen+"\nEsperando PUENTE_LISTO…";
+}
+iframe.addEventListener("load",()=>{
+ cargas++;
+ iniciar();
+});
+iframe.addEventListener("error",()=>{
+ estado.textContent="ERROR: el navegador informó que el iframe no pudo cargar.";
+});
+window.addEventListener("message",event=>{
+ if(!origenPermitido(event.origin))return;
+ ultimoOrigen=event.origin;
+ ultimoMensaje=event.data&&event.data.tipo?String(event.data.tipo):"mensaje sin tipo";
+ if(!event.data||event.data.tipo!=="PUENTE_LISTO"){
+  estado.textContent="Iframe cargado: "+cargas+"\nIntentos de saludo: "+intentos+"\nÚltimo mensaje Google: "+ultimoMensaje+"\nOrigen recibido: "+ultimoOrigen+"\nEsperando PUENTE_LISTO…";
+  return;
+ }
+ autorizado=true;
+ clearInterval(intervalo);clearTimeout(limite);
+ estado.textContent="CONEXIÓN ESTABLECIDA\nOrigen: "+event.origin+"\nTiempo: "+(performance.now()/1000).toFixed(1)+" s\nNo se enviaron solicitudes ni se modificaron datos.";
+});
+intervalo=setInterval(iniciar,1000);
+limite=setTimeout(()=>{
+ clearInterval(intervalo);
+ if(!autorizado)estado.textContent="SIN RESPUESTA PUENTE_LISTO\nIframe cargado: "+cargas+"\nIntentos de saludo: "+intentos+"\nÚltimo mensaje Google: "+ultimoMensaje+"\nOrigen recibido: "+ultimoOrigen+"\nNo se enviaron solicitudes ni se modificaron datos.";
+},15000);
 })();
 </script>
 </body>
