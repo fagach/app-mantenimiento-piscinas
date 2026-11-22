@@ -372,8 +372,10 @@ function actualizarUbicacionBotonGoogle() {
       .insertAdjacentElement("beforebegin", textoAccesoDrive);
     document.getElementById("btnAutorizarCarpeta")
       .insertAdjacentElement("beforebegin", botonGoogle);
-    textoAccesoDrive.hidden = Boolean(idTokenGoogle);
-    botonGoogle.hidden = Boolean(idTokenGoogle);
+    // Mantener el acceso OAuth disponible para renovar el permiso de Drive
+    // cuando se necesite autorizar o cambiar la carpeta más adelante.
+    textoAccesoDrive.hidden = false;
+    botonGoogle.hidden = false;
   } else {
     document.getElementById("estadoConexion")
       .insertAdjacentElement("afterend", botonGoogle);
@@ -749,7 +751,7 @@ async function recibirCredencialGoogle(respuesta) {
 
       perfilSesion = sesionActual;
       idTokenGoogle = credencialGoogle;
-      document.getElementById("botonGoogle").hidden = true;
+      document.getElementById("botonGoogle").hidden = false;
       estadoUsuario.textContent =
         "Cuenta de administrador verificada. Ya puedes autorizar la carpeta.";
       actualizarEstadoSesion(
