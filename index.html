@@ -1394,6 +1394,10 @@ async function mostrarRegistros() {
       db = await abrirDB();
       const migrados = await migrarRegistrosAntiguos();
       await mostrarRegistros();
+      // Espera a que se cargue el bloque del puente, que define solicitarServidor.
+      if (document.readyState === "loading") {
+        await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+      }
       await restaurarSesionGuardada();
       estado.textContent = migrados
         ? `Almacenamiento preparado. Se copiaron ${migrados} registro(s) anteriores.`
