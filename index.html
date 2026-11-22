@@ -355,6 +355,8 @@ const CLAVE_CIERRE_PENDIENTE = "sesionPWA12h_cierrePendiente";
 let sessionTokenPWA = localStorage.getItem(CLAVE_SESION_PWA) || "";
 let perfilSesion = null;
 let autenticacionEnCurso = false;
+// Conserva una solicitud de restauración que llegue mientras otra está en curso.
+let restauracionSesionSolicitada = false;
 
 const estadoUsuario = document.getElementById("estadoUsuario");
 const estadoSesion = document.getElementById("estadoSesion");
@@ -486,7 +488,11 @@ actualizarEstadoSesion(
 );
 
 async function restaurarSesionGuardada() {
-  if (autenticacionEnCurso || !db) return;
+  if (!db) return;
+  if (autenticacionEnCurso) {
+    restauracionSesionSolicitada = true;
+    return;
+  }
   if (!conexionDisponible) {
     await actualizarAvisoPendientes();
     return;
@@ -578,6 +584,14 @@ async function restaurarSesionGuardada() {
     }
   } finally {
     autenticacionEnCurso = false;
+    if (restauracionSesionSolicitada) {
+      restauracionSesionSolicitada = false;
+      if (conexionDisponible && db) {
+        restaurarSesionGuardada().catch(error => {
+          console.error("No se pudo reintentar la restauración de sesión:", error);
+        });
+      }
+    }
   }
 }
 
