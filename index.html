@@ -402,7 +402,11 @@ async function comprobarConexionReal() {
     }
 
     if (conexionSeRecupero || !ventanaPuenteAutorizada) {
-      // Renueva el puente incluso si el iframe conservaba una página de error.
+      // Invalida el canal anterior y prepara la espera antes de recargar el iframe.
+      // Así, la restauración de sesión espera el nuevo handshake de Apps Script.
+      ventanaPuenteAutorizada = null;
+      origenPuenteAutorizado = null;
+      crearPromesaPuenteListo();
       iframePuente.src = URL_SERVIDOR;
     }
 
