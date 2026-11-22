@@ -461,8 +461,23 @@ async function restaurarSesionGuardada() {
     estadoUsuario.textContent = "Sesión recuperada: " + resultado.correo + ".";
     actualizarEstadoSesion("Sesión activa. Vence a las 12 horas de su creación.");
     if (resultado.perfil === "Administrador") {
-      document.getElementById("estadoAutorizacionFotos").textContent =
-        "Para autorizar o cambiar la carpeta de Drive, vuelve a identificarte con Google.";
+      const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
+      try {
+        const carpeta = await solicitarServidor({
+          accion: "consultarCarpetaFotos",
+          sessionToken: sessionTokenPWA
+        });
+        if (!carpeta || !carpeta.ok) {
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
+        }
+        estadoCarpeta.textContent = carpeta.autorizada
+          ? "Carpeta autorizada: " + carpeta.nombre
+          : "Carpeta de fotografías pendiente de autorización.";
+      } catch (error) {
+        estadoCarpeta.textContent =
+          "No se pudo consultar la autorización: " + error.message;
+      }
       // Se inicializa el botón para obtener un token OAuth fresco al usar Picker.
       document.getElementById("botonGoogle").hidden = false;
       inicializarGoogleIdentity();
