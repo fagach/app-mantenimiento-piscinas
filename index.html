@@ -380,6 +380,32 @@ function actualizarEstadoSesion(mensaje) {
   estadoSesion.textContent = mensaje;
 }
 
+// Informa sobre visitas pendientes sin bloquear nunca el registro local.
+async function actualizarAvisoPendientes() {
+  if (!db) return 0;
+
+  const registros = await obtenerTodas();
+  const cantidad = registros.filter(
+    registro => registro.estado === "Pendiente de sincronización"
+  ).length;
+
+  if (!navigator.onLine) {
+    actualizarEstadoSesion(
+      cantidad > 0
+        ? `Sin Internet. Hay ${cantidad} visita(s) pendiente(s). Puedes seguir registrando; se sincronizarán al recuperar Internet y validar tu sesión.`
+        : "Sin Internet. Puedes seguir registrando visitas; se guardarán en este dispositivo y se sincronizarán al recuperar Internet."
+    );
+  } else if (!sessionTokenPWA) {
+    actualizarEstadoSesion(
+      cantidad > 0
+        ? `Hay ${cantidad} visita(s) pendiente(s). Inicia sesión con Google para sincronizarlas. Puedes seguir registrando visitas; se guardarán en este dispositivo.`
+        : "Inicia sesión con Google para sincronizar. También puedes registrar visitas sin conexión; quedarán guardadas en este dispositivo."
+    );
+  }
+
+  return cantidad;
+}
+
 actualizarEstadoConexion();
 actualizarEstadoSesion(
   navigator.onLine
@@ -390,7 +416,7 @@ actualizarEstadoSesion(
 async function restaurarSesionGuardada() {
   if (autenticacionEnCurso || !db) return;
   if (!navigator.onLine) {
-    actualizarEstadoSesion("Sin conexión. La sesión guardada se comprobará al recuperar Internet.");
+    await actualizarAvisoPendientes();
     return;
   }
   autenticacionEnCurso = true;
@@ -417,6 +443,7 @@ async function restaurarSesionGuardada() {
     if (!sessionTokenPWA) {
       document.getElementById("botonGoogle").hidden = false;
       inicializarGoogleIdentity();
+      await actualizarAvisoPendientes();
       return;
     }
     const resultado = await solicitarServidor({
@@ -457,6 +484,7 @@ async function restaurarSesionGuardada() {
       actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google.");
       estadoUsuario.textContent = mensaje;
       inicializarGoogleIdentity();
+      await actualizarAvisoPendientes();
     } else {
       // Una falla temporal de red o de Sheets no debe borrar una sesión válida.
       actualizarEstadoSesion("No se pudo comprobar la sesión por un problema temporal. Se conserva para reintentar.");
@@ -1013,8 +1041,10 @@ async function subirFotoDrive(archivo) {
 
 async function sincronizarPendientes() {
   if (!sessionTokenPWA) {
-    estado.textContent =
-      "Visita guardada localmente. Identifícate con Google para sincronizar.";
+    const pendientes = await actualizarAvisoPendientes();
+    estado.textContent = pendientes
+      ? `Visita(s) guardada(s) localmente: ${pendientes} pendiente(s). Inicia sesión con Google para sincronizar cuando tengas Internet.`
+      : "Visita guardada localmente. Inicia sesión con Google para sincronizar cuando tengas Internet.";
     return;
   }
 
@@ -1107,6 +1137,7 @@ async function sincronizarPendientes() {
           actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google para continuar.");
           estadoUsuario.textContent = mensajeError;
           inicializarGoogleIdentity();
+          await actualizarAvisoPendientes();
           break;
         }
       }
@@ -1142,7 +1173,10 @@ async function sincronizarPendientes() {
   window.addEventListener("load", () => {
     if (db && !sessionTokenPWA) inicializarGoogleIdentity();
   });
-  window.addEventListener("offline", actualizarEstadoConexion);
+  window.addEventListener("offline", async () => {
+    actualizarEstadoConexion();
+    if (db) await actualizarAvisoPendientes();
+  });
   
   
 async function mostrarRegistros() {
