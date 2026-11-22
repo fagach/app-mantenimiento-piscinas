@@ -4,10 +4,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer-when-downgrade">
   <meta name="theme-color" content="#075985">
   <title>App Mantenimiento Piscinas</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     * { box-sizing: border-box; }
+
+    /* Evita que el gesto de arrastre hacia abajo recargue la PWA. */
+    html, body {
+      overscroll-behavior-y: none;
+    }
 
     body {
       margin: 0;
@@ -48,6 +55,12 @@
     }
 
     input, select, textarea { background: #fff; }
+    input[readonly], select:disabled {
+      background: #f1f5f9;
+      color: #334155;
+      opacity: 1;
+      cursor: not-allowed;
+    }
 
     button {
       margin-top: 20px;
@@ -76,6 +89,24 @@
 
     .error.visible { display: block; }
 
+    .indicador {
+      margin: 8px 0;
+      padding: 9px 11px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .indicador-sesion {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .indicador-conexion {
+      background: #e0f2fe;
+      color: #075985;
+    }
+
     #estado {
       margin-top: 16px;
       padding: 12px;
@@ -93,11 +124,36 @@
 <body>
 <main>
   <h1>Mantenimiento de Piscinas</h1>
-
-  <p class="note">
-    Prototipo de prueba. Los registros se guardan en este navegador.
-    Todavía no se envían a Google Sheets.
+  <div id="accesoGoogle">
+  <p class="note"><strong>Acceso al sistema</strong></p>
+  <p id="estadoSesion" class="indicador indicador-sesion" role="status" aria-live="polite">
+    Verificando sesión de Google...
   </p>
+  <p id="estadoConexion" class="indicador indicador-conexion" role="status" aria-live="polite">
+    Comprobando conexión...
+  </p>
+  <div id="botonGoogle"></div>
+  <p id="estadoUsuario" class="note" aria-live="polite">
+    Debes identificarte con tu cuenta de Google para sincronizar visitas.
+  </p>
+  <button type="button" class="secondary" id="btnCerrarSesion" hidden>
+    Cerrar sesión
+  </button>
+</div>
+
+  <div id="autorizacionFotos" hidden>
+  <p class="note"><strong>Administración</strong></p>
+
+  <button
+    type="button"
+    class="secondary"
+    id="btnAutorizarCarpeta">
+    Autorizar carpeta de fotografías
+  </button>
+
+  <p id="estadoAutorizacionFotos" class="note" aria-live="polite"></p>
+</div>
+  
 
   
 <form id="formulario">
@@ -111,6 +167,7 @@
 
   <label for="tipo">Tipo de visita</label>
   <select id="tipo" name="tipo" required>
+    <option value="" selected disabled>Selecciona el tipo de visita</option>
     <option value="Programada">Programada</option>
     <option value="No programada">No programada</option>
   </select>
@@ -167,7 +224,7 @@
 
   <label>
     <input type="checkbox" id="bombaMantenimiento" name="bombaMantenimiento">
-    Bomba en Mantenimiento
+    Bajada de Nivel
   </label>
 
   <label for="novedades">Observaciones</label>
@@ -175,11 +232,11 @@
 
   <label for="fotoMantenimiento">Foto Mantenimiento (obligatoria)</label>
   <input id="fotoMantenimiento" name="fotoMantenimiento"
-         type="file" accept="image/*" capture="environment" required>
+         type="file" accept="image/*" required>
 
   <label for="fotoNovedades">Foto Novedades (opcional)</label>
   <input id="fotoNovedades" name="fotoNovedades"
-         type="file" accept="image/*" capture="environment">
+         type="file" accept="image/*">
 
   <button type="submit">Guardar visita en este dispositivo</button>
 </form>
@@ -211,8 +268,543 @@
   const estado = document.getElementById("estado");
   const lista = document.getElementById("lista");
   const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
+
+  // Recibe los mismos parámetros entry.* que genera el enlace de WhatsApp.
+  const parametrosVisita = new URLSearchParams(window.location.search);
+  const visitaDesdeEnlace = {
+    operador: parametrosVisita.get("entry.51684031") || "",
+    cliente: parametrosVisita.get("entry.1166786524") || "",
+    tipo: parametrosVisita.get("entry.1764256793") || ""
+  };
+  const hayParametrosVisita = Object.values(visitaDesdeEnlace)
+    .some(valor => valor !== "");
+  const enlaceVisitaValido =
+    Boolean(visitaDesdeEnlace.operador.trim()) &&
+    Boolean(visitaDesdeEnlace.cliente.trim()) &&
+    ["Programada", "No programada"].includes(visitaDesdeEnlace.tipo);
+
+  function aplicarParametrosVisita() {
+    if (!enlaceVisitaValido) return;
+
+    document.getElementById("cliente").value = visitaDesdeEnlace.cliente;
+    document.getElementById("operador").value = visitaDesdeEnlace.operador;
+    document.getElementById("tipo").value = visitaDesdeEnlace.tipo;
+
+    document.getElementById("cliente").readOnly = true;
+    document.getElementById("operador").readOnly = true;
+    document.getElementById("tipo").disabled = true;
+  }
+
+  function quitarParametrosVisitaURL() {
+    // Quitar solo los parámetros de precarga; conservar cualquier otro parámetro.
+    const urlActual = new URL(window.location.href);
+    urlActual.searchParams.delete("entry.51684031");
+    urlActual.searchParams.delete("entry.1166786524");
+    urlActual.searchParams.delete("entry.1764256793");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      urlActual.pathname + urlActual.search + urlActual.hash
+    );
+  }
+
+  function limpiarParametrosVisita() {
+    const cliente = document.getElementById("cliente");
+    const operador = document.getElementById("operador");
+    const tipo = document.getElementById("tipo");
+
+    cliente.value = "";
+    cliente.defaultValue = "";
+    cliente.readOnly = false;
+    operador.value = "";
+    operador.defaultValue = "";
+    operador.readOnly = false;
+    tipo.selectedIndex = 0;
+    tipo.disabled = false;
+
+    quitarParametrosVisitaURL();
+  }
+
+  if (enlaceVisitaValido) {
+    aplicarParametrosVisita();
+    // Los datos ya están en los campos: retirar de inmediato la precarga de la URL.
+    // Así, una recarga no vuelve a aplicar el mismo enlace después de guardar.
+    quitarParametrosVisitaURL();
+    document.getElementById("estadoUsuario").textContent =
+      "Visita cargada desde WhatsApp. Cliente, operador y tipo están bloqueados.";
+  } else if (hayParametrosVisita) {
+    document.getElementById("estadoUsuario").textContent =
+      "El enlace de visita está incompleto o contiene datos no válidos. Ábrelo nuevamente desde WhatsApp.";
+    formulario.querySelector('button[type="submit"]').disabled = true;
+  }
+
   let db = null;
   let sincronizacionEnCurso = false;
+  
+const ID_CLIENTE_OAUTH =
+  "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
+let idTokenGoogle = null; // Solo memoria: OAuth Google para Picker.
+const CLAVE_SESION_PWA = "sesionPWA12h";
+const CLAVE_CIERRE_PENDIENTE = "sesionPWA12h_cierrePendiente";
+let sessionTokenPWA = localStorage.getItem(CLAVE_SESION_PWA) || "";
+let perfilSesion = null;
+let autenticacionEnCurso = false;
+
+const estadoUsuario = document.getElementById("estadoUsuario");
+const estadoSesion = document.getElementById("estadoSesion");
+const estadoConexion = document.getElementById("estadoConexion");
+let googleIdentityInicializado = false;
+
+const scriptGoogle = document.querySelector(
+  'script[src="https://accounts.google.com/gsi/client"]'
+);
+if (scriptGoogle) {
+  scriptGoogle.addEventListener("load", () => {
+    // No iniciar Google Identity si ya hay una sesión PWA guardada.
+    // El administrador lo inicializa después de validar su sesión, para usar Picker.
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
+}
+
+function actualizarEstadoConexion() {
+  estadoConexion.textContent = navigator.onLine
+    ? "Internet: conectado"
+    : "Internet: sin conexión";
+}
+
+function actualizarEstadoSesion(mensaje) {
+  estadoSesion.textContent = mensaje;
+}
+
+// Informa sobre visitas pendientes sin bloquear nunca el registro local.
+async function actualizarAvisoPendientes() {
+  if (!db) return 0;
+
+  const registros = await obtenerTodas();
+  const cantidad = registros.filter(
+    registro => registro.estado === "Pendiente de sincronización"
+  ).length;
+
+  if (!navigator.onLine) {
+    actualizarEstadoSesion(
+      cantidad > 0
+        ? `Sin Internet. Hay ${cantidad} visita(s) pendiente(s). Puedes seguir registrando; se sincronizarán al recuperar Internet y validar tu sesión.`
+        : "Sin Internet. Puedes seguir registrando visitas; se guardarán en este dispositivo y se sincronizarán al recuperar Internet."
+    );
+  } else if (!sessionTokenPWA) {
+    actualizarEstadoSesion(
+      cantidad > 0
+        ? `Hay ${cantidad} visita(s) pendiente(s). Inicia sesión con Google para sincronizarlas. Puedes seguir registrando visitas; se guardarán en este dispositivo.`
+        : "Inicia sesión con Google para sincronizar. También puedes registrar visitas sin conexión; quedarán guardadas en este dispositivo."
+    );
+  }
+
+  return cantidad;
+}
+
+actualizarEstadoConexion();
+actualizarEstadoSesion(
+  navigator.onLine
+    ? "Verificando sesión de Google..."
+    : "Sesión de Google sin verificar: no hay Internet."
+);
+
+async function restaurarSesionGuardada() {
+  if (autenticacionEnCurso || !db) return;
+  if (!navigator.onLine) {
+    await actualizarAvisoPendientes();
+    return;
+  }
+  autenticacionEnCurso = true;
+  actualizarEstadoSesion("Comprobando la sesión guardada...");
+  try {
+    const cierrePendiente = localStorage.getItem(CLAVE_CIERRE_PENDIENTE) || "";
+    if (cierrePendiente) {
+      try {
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: cierrePendiente
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        // No impedir la validación de la sesión actual por un fallo temporal.
+        console.warn("Revocación pendiente; se reintentará:", error);
+      }
+    }
+    if (!sessionTokenPWA) {
+      document.getElementById("botonGoogle").hidden = false;
+      inicializarGoogleIdentity();
+      await actualizarAvisoPendientes();
+      return;
+    }
+    const resultado = await solicitarServidor({
+      accion: "validarSesion",
+      sessionToken: sessionTokenPWA
+    });
+    if (!resultado || !resultado.ok || !resultado.valida) {
+      throw new Error(resultado?.error || "La sesión ya no es válida.");
+    }
+    perfilSesion = resultado;
+    document.getElementById("botonGoogle").hidden = true;
+    document.getElementById("btnCerrarSesion").hidden = false;
+    document.getElementById("autorizacionFotos").hidden =
+      resultado.perfil !== "Administrador";
+    estadoUsuario.textContent = "Sesión recuperada: " + resultado.correo + ".";
+    actualizarEstadoSesion("Sesión activa. Vence a las 12 horas de su creación.");
+    if (resultado.perfil === "Administrador") {
+      const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
+      try {
+        const carpeta = await solicitarServidor({
+          accion: "consultarCarpetaFotos",
+          sessionToken: sessionTokenPWA
+        });
+        if (!carpeta || !carpeta.ok) {
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
+        }
+        estadoCarpeta.textContent = carpeta.autorizada
+          ? "Carpeta autorizada: " + carpeta.nombre
+          : "Carpeta de fotografías pendiente de autorización.";
+      } catch (error) {
+        estadoCarpeta.textContent =
+          "No se pudo consultar la autorización: " + error.message;
+      }
+      // Se inicializa el botón para obtener un token OAuth fresco al usar Picker.
+      document.getElementById("botonGoogle").hidden = false;
+      inicializarGoogleIdentity();
+    }
+    await sincronizarPendientes();
+  } catch (error) {
+    const mensaje = String(error && error.message ? error.message : error);
+    const sesionInvalidada =
+      /La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i
+        .test(mensaje);
+
+    if (sesionInvalidada) {
+      sessionTokenPWA = "";
+      localStorage.removeItem(CLAVE_SESION_PWA);
+      perfilSesion = null;
+      document.getElementById("btnCerrarSesion").hidden = true;
+      document.getElementById("autorizacionFotos").hidden = true;
+      document.getElementById("botonGoogle").hidden = false;
+      actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google.");
+      estadoUsuario.textContent = mensaje;
+      inicializarGoogleIdentity();
+      await actualizarAvisoPendientes();
+    } else {
+      // Una falla temporal de red o de Sheets no debe borrar una sesión válida.
+      actualizarEstadoSesion("No se pudo comprobar la sesión por un problema temporal. Se conserva para reintentar.");
+      estadoUsuario.textContent = mensaje;
+    }
+  } finally {
+    autenticacionEnCurso = false;
+  }
+}
+
+async function cerrarSesionVoluntaria() {
+  const tokenAnterior = sessionTokenPWA;
+  sessionTokenPWA = "";
+  localStorage.removeItem(CLAVE_SESION_PWA);
+  idTokenGoogle = null;
+  perfilSesion = null;
+  document.getElementById("btnCerrarSesion").hidden = true;
+  document.getElementById("autorizacionFotos").hidden = true;
+  document.getElementById("botonGoogle").hidden = false;
+  actualizarEstadoSesion("Sesión cerrada en este dispositivo.");
+  estadoUsuario.textContent = "Para sincronizar nuevamente, identifícate con Google.";
+  if (tokenAnterior) {
+    if (navigator.onLine) {
+      try {
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: tokenAnterior
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+        estadoUsuario.textContent += " La revocación del servidor queda pendiente hasta recuperar Internet.";
+      }
+    } else {
+      localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+      estadoUsuario.textContent += " La revocación del servidor se enviará al recuperar Internet.";
+    }
+  }
+}
+
+document.getElementById("btnCerrarSesion")
+  .addEventListener("click", cerrarSesionVoluntaria);
+
+function iniciarAutorizacionCarpeta() {
+  if (!idTokenGoogle) {
+    estadoUsuario.textContent =
+      "Primero debes identificarte con Google.";
+    return;
+  }
+
+  const contenedor = document.getElementById("contenedorPicker");
+  const iframe = document.getElementById("iframePicker");
+
+  contenedor.hidden = false;
+
+  iframe.src = URL_SERVIDOR + "?selector=1";
+}
+
+document.getElementById("btnAutorizarCarpeta")
+  .addEventListener("click", iniciarAutorizacionCarpeta);
+
+let ventanaSelectorAutorizada = null;
+
+window.addEventListener("message", function(event) {
+  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
+
+  // Apps Script puede insertar un marco intermedio. El selector avisa a window.top;
+  // por eso se valida el origen y se responde a la ventana que envió el mensaje.
+  let origenConfiable = false;
+
+  try {
+    const host = new URL(event.origin).hostname;
+    origenConfiable =
+      event.origin.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
+      );
+  } catch (error) {
+    return;
+  }
+
+  if (!origenConfiable || !event.data || typeof event.data !== "object") return;
+
+  const tipoMensaje = event.data.tipo;
+  if (tipoMensaje !== "PICKER_LISTO" && tipoMensaje !== "RESULTADO_PICKER") return;
+
+  if (tipoMensaje === "PICKER_LISTO") {
+    if (!idTokenGoogle || !event.source) {
+      estadoFotos.textContent =
+        "El selector avisó que está listo, pero no hay una sesión de Google disponible.";
+      return;
+    }
+
+    ventanaSelectorAutorizada = event.source;
+    estadoFotos.textContent =
+      "Selector conectado. Enviando autorización de Google...";
+
+    event.source.postMessage({
+      tipo: "AUTORIZAR_PICKER",
+      idToken: idTokenGoogle
+    }, event.origin);
+    return;
+  }
+
+  if (event.source !== ventanaSelectorAutorizada) {
+    estadoFotos.textContent =
+      "Se recibió un resultado desde una ventana distinta del selector autorizado.";
+    return;
+  }
+
+  estadoFotos.textContent =
+    event.data.ok
+      ? "Carpeta autorizada: " + String(event.data.nombre || "")
+      : event.data.cancelado
+        ? "Selección cancelada."
+        : "La carpeta seleccionada no es la esperada.";
+
+  if (event.data.ok) {
+    document.getElementById("contenedorPicker").hidden = true;
+    ventanaSelectorAutorizada = null;
+  }
+});
+  
+
+async function recibirCredencialGoogle(respuesta) {
+  // El idToken Google vive solo en memoria. No se guarda en localStorage ni IndexedDB.
+  if (!respuesta || !respuesta.credential) {
+    document.getElementById("botonGoogle").hidden = false;
+    estadoUsuario.textContent =
+      "No se pudo completar la identificación de Google.";
+    return;
+  }
+
+  const credencialGoogle = respuesta.credential;
+  actualizarEstadoSesion("Credencial recibida. Verificando autorización...");
+  estadoUsuario.textContent =
+    "Cuenta de Google identificada. Comprobando autorización...";
+
+  try {
+    // Si ya existe una sesión PWA, Google OAuth se utiliza únicamente para
+    // el Picker. Nunca se crea otra sesión ni se reinician sus 12 horas.
+    if (sessionTokenPWA) {
+      const sesionActual = await solicitarServidor({
+        accion: "validarSesion",
+        sessionToken: sessionTokenPWA
+      });
+      if (!sesionActual || !sesionActual.ok || !sesionActual.valida) {
+        throw new Error(sesionActual?.error || "La sesión PWA ya no es válida.");
+      }
+
+      const identidad = await solicitarServidor({
+        accion: "consultarPerfil",
+        idToken: credencialGoogle
+      });
+      if (!identidad || !identidad.ok) {
+        throw new Error(identidad?.error || "No se pudo verificar la cuenta de Google.");
+      }
+      if (
+        String(identidad.correo || "").toLowerCase() !==
+        String(sesionActual.correo || "").toLowerCase()
+      ) {
+        throw new Error("La cuenta de Google no coincide con la sesión activa.");
+      }
+      if (
+        sesionActual.perfil !== "Administrador" ||
+        identidad.perfil !== "Administrador"
+      ) {
+        throw new Error("Solo el administrador puede autorizar la carpeta.");
+      }
+
+      perfilSesion = sesionActual;
+      idTokenGoogle = credencialGoogle;
+      document.getElementById("botonGoogle").hidden = true;
+      estadoUsuario.textContent =
+        "Cuenta de administrador verificada. Ya puedes autorizar la carpeta.";
+      actualizarEstadoSesion(
+        "Sesión PWA original conservada. El acceso de Google se usa solo para el Picker."
+      );
+      return;
+    }
+
+    // Primer inicio de sesión: aquí se crea la sesión PWA de 12 horas.
+    const sesion = await solicitarServidor({
+      accion: "crearSesion",
+      idToken: credencialGoogle
+    });
+    if (!sesion || !sesion.ok || !sesion.sessionToken) {
+      throw new Error(sesion?.error || "No se pudo crear la sesión temporal.");
+    }
+
+    sessionTokenPWA = sesion.sessionToken;
+    localStorage.setItem(CLAVE_SESION_PWA, sessionTokenPWA);
+    perfilSesion = sesion;
+    idTokenGoogle = credencialGoogle;
+    document.getElementById("btnCerrarSesion").hidden = false;
+    actualizarEstadoSesion("Sesión activa durante un máximo de 12 horas.");
+
+    let correoGoogle = sesion.correo || "cuenta autorizada";
+    document.getElementById("botonGoogle").hidden = true;
+    estadoUsuario.textContent = "Sesión iniciada como " + correoGoogle + ".";
+
+    const panel = document.getElementById("autorizacionFotos");
+    if (sesion.perfil === "Administrador") {
+      panel.hidden = false;
+      const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
+      try {
+        const carpeta = await solicitarServidor({
+          accion: "consultarCarpetaFotos",
+          sessionToken: sessionTokenPWA
+        });
+        if (!carpeta || !carpeta.ok) {
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
+        }
+        estadoCarpeta.textContent = carpeta.autorizada
+          ? "Carpeta autorizada: " + carpeta.nombre
+          : "Carpeta de fotografías pendiente de autorización.";
+      } catch (error) {
+        estadoCarpeta.textContent =
+          "No se pudo consultar la autorización: " + error.message;
+      }
+    } else {
+      panel.hidden = true;
+    }
+
+    await sincronizarPendientes();
+  } catch (error) {
+    // Un fallo de OAuth/Picker no elimina una sesión PWA válida.
+    idTokenGoogle = null;
+    document.getElementById("botonGoogle").hidden = false;
+    estadoUsuario.textContent =
+      "No se pudo completar la autorización de Google: " + error.message;
+    actualizarEstadoSesion(
+      "No se pudo verificar el acceso con Google. Comprueba la conexión e inténtalo nuevamente."
+    );
+  }
+}
+  
+function inicializarGoogleIdentity() {
+  // Puede llamarse mientras se valida/restaura la sesión PWA.
+  if (!navigator.onLine) {
+    actualizarEstadoSesion(
+      "Sesión de Google sin verificar: no hay Internet."
+    );
+    return;
+  }
+
+  if (googleIdentityInicializado) return;
+
+  if (
+    !window.google ||
+    !google.accounts ||
+    !google.accounts.id
+  ) {
+    estadoUsuario.textContent =
+      "No se pudo cargar el servicio de inicio de sesión de Google. Se intentará nuevamente al recuperar Internet.";
+    actualizarEstadoSesion("No se pudo verificar la sesión de Google.");
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: ID_CLIENTE_OAUTH,
+    callback: async (respuesta) => {
+      autenticacionEnCurso = true;
+      try { await recibirCredencialGoogle(respuesta); }
+      finally { autenticacionEnCurso = false; }
+    },
+    auto_select: true
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById("botonGoogle"),
+    {
+      theme: "outline",
+      size: "large",
+      text: "signin_with",
+      shape: "rectangular",
+      width: 280
+    }
+  );
+
+  googleIdentityInicializado = true;
+  if (!sessionTokenPWA) {
+    actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+  }
+
+  google.accounts.id.prompt((notificacion) => {
+    if (
+      !sessionTokenPWA &&
+      (
+        notificacion.isNotDisplayed() ||
+        notificacion.isSkippedMoment()
+      )
+    ) {
+      actualizarEstadoSesion(
+        "Google no recuperó la sesión automáticamente. Puedes usar el botón para identificarte."
+      );
+    }
+  });
+}
+
 
   // Lee la fecha original de captura de una fotografía JPEG (EXIF).
   async function leerFechaEXIF(archivo) {
@@ -430,83 +1022,75 @@ function convertirFotoBase64(archivo) {
 }
 
   
+
 async function subirFotoDrive(archivo) {
   if (!archivo) return "";
-
-  const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+  if (!sessionTokenPWA) throw new Error("La sesión venció. Identifícate nuevamente.");
 
   const datosBase64 = await convertirFotoBase64(archivo);
 
-  const respuesta = await fetch(URL_SERVIDOR, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      accion: "guardarFoto",
-      datosBase64: datosBase64,
-      nombreOriginal: archivo.name,
-      tipoMime: archivo.type
-    })
+  const resultado = await solicitarServidor({
+    accion: "guardarFoto",
+    sessionToken: sessionTokenPWA,
+    datosBase64: datosBase64,
+    nombreOriginal: archivo.name,
+    tipoMime: archivo.type
   });
 
-  const resultado = await respuesta.json();
-
-  if (!resultado.ok || !resultado.foto || !resultado.foto.enlace) {
-    throw new Error("El servidor no confirmó el guardado de la fotografía");
+  if (!resultado || !resultado.ok ||
+      !resultado.foto || !resultado.foto.enlace) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no confirmó el guardado de la fotografía."
+    );
   }
 
   return resultado.foto.enlace;
 }
    
   
+
 async function sincronizarPendientes() {
+  if (!sessionTokenPWA) {
+    const pendientes = await actualizarAvisoPendientes();
+    estado.textContent = pendientes
+      ? `Visita(s) guardada(s) localmente: ${pendientes} pendiente(s). Inicia sesión con Google para sincronizar cuando tengas Internet.`
+      : "Visita guardada localmente. Inicia sesión con Google para sincronizar cuando tengas Internet.";
+    return;
+  }
+
   if (sincronizacionEnCurso) return;
   sincronizacionEnCurso = true;
+
   try {
-  
-  if (!navigator.onLine) return;
+    if (!navigator.onLine) return;
 
-  const URL_SERVIDOR =
-    "https://script.google.com/macros/s/AKfycbx5DRgzkUa_MiV7AuiTL60NdDVqhvBOyIioUuSaKvAriLBYlA4_CrxfiKPmH6yPd3AD/exec";
+    const registros = await obtenerTodas();
 
-  const registros = await obtenerTodas();
+    const pendientes = registros.filter(
+      registro => registro.estado === "Pendiente de sincronización"
+    );
 
-  const pendientes = registros.filter(
-    registro => registro.estado === "Pendiente de sincronización"
-  );
+    for (let registro of pendientes) {
+      try {
+        const fotoMantenimiento =
+          registro.fotoMantenimiento || registro.foto || null;
 
-  for (let registro of pendientes) {
-    try {
-      // Recuperar compatibilidad con fotografías antiguas.
-      const fotoMantenimiento =
-        registro.fotoMantenimiento || registro.foto || null;
+        if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
+          const enlace = await subirFotoDrive(fotoMantenimiento);
+          registro.enlaceFotoMantenimiento = enlace;
+          await guardarEnDB(registro);
+        }
 
-      // Subir la fotografía de mantenimiento si aún no tiene enlace.
-      if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
-        const enlace = await subirFotoDrive(fotoMantenimiento);
+        if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
+          const enlace = await subirFotoDrive(registro.fotoNovedades);
+          registro.enlaceFotoNovedades = enlace;
+          await guardarEnDB(registro);
+        }
 
-        registro.enlaceFotoMantenimiento = enlace;
-        await guardarEnDB(registro);
-      }
-
-      // Subir la fotografía de novedades si aún no tiene enlace.
-      if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
-        const enlace = await subirFotoDrive(registro.fotoNovedades);
-
-        registro.enlaceFotoNovedades = enlace;
-        await guardarEnDB(registro);
-      }
-
-      // Enviar la visita completa al servidor.
-      const respuesta = await fetch(URL_SERVIDOR, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: JSON.stringify({
+        const resultado = await solicitarServidor({
           accion: "guardarVisita",
+          sessionToken: sessionTokenPWA,
           visita: {
             id: registro.id,
             fecha: registro.fecha,
@@ -533,34 +1117,48 @@ async function sincronizarPendientes() {
             comparacionFechaFoto:
               registro.comparacionFechaFoto || "NO VERIFICABLE"
           }
-        })
-      });
+        });
 
-      const resultado = await respuesta.json();
+        if (!resultado || !resultado.ok || !resultado.guardado) {
+          throw new Error(
+            resultado?.error ||
+            "El servidor no confirmó el registro."
+          );
+        }
 
-      if (!resultado.ok || !resultado.guardado) {
-        throw new Error(
-          resultado.error || "El servidor no confirmó el registro"
+        await actualizarEstadoEnDB(
+          registro.id,
+          "Sincronizada"
         );
+
+      } catch (error) {
+        console.error(
+          "No se pudo sincronizar la visita " + registro.id,
+          error
+        );
+
+        const mensajeError = String(error && error.message ? error.message : error);
+        if (/La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i.test(mensajeError)) {
+          sessionTokenPWA = "";
+          localStorage.removeItem(CLAVE_SESION_PWA);
+          perfilSesion = null;
+          document.getElementById("btnCerrarSesion").hidden = true;
+          document.getElementById("autorizacionFotos").hidden = true;
+          document.getElementById("botonGoogle").hidden = false;
+          actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google para continuar.");
+          estadoUsuario.textContent = mensajeError;
+          inicializarGoogleIdentity();
+          await actualizarAvisoPendientes();
+          break;
+        }
       }
-
-      await actualizarEstadoEnDB(
-        registro.id,
-        "Sincronizada"
-      );
-
-    } catch (error) {
-      console.error(
-        "No se pudo sincronizar la visita " + registro.id,
-        error
-      );
     }
-  }
 
- await mostrarRegistros();
-} finally {
-  sincronizacionEnCurso = false;
-}
+    await mostrarRegistros();
+
+  } finally {
+    sincronizacionEnCurso = false;
+  }
 }
   
   async function migrarRegistrosAntiguos() {
@@ -579,9 +1177,12 @@ async function sincronizarPendientes() {
     }
     return migrados;
   }
-
-  window.addEventListener("online", () => {
-    sincronizarPendientes();
+  window.addEventListener("load", () => {
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
+  window.addEventListener("offline", async () => {
+    actualizarEstadoConexion();
+    if (db) await actualizarAvisoPendientes();
   });
   
   
@@ -746,6 +1347,7 @@ async function mostrarRegistros() {
         "Visita guardada en este navegador. " + mensajeServidor;
 
       formulario.reset();
+      limpiarParametrosVisita();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
       await mostrarRegistros();
 
@@ -799,7 +1401,11 @@ async function mostrarRegistros() {
       db = await abrirDB();
       const migrados = await migrarRegistrosAntiguos();
       await mostrarRegistros();
-      await sincronizarPendientes();
+      // Espera a que se cargue el bloque del puente, que define solicitarServidor.
+      if (document.readyState === "loading") {
+        await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+      }
+      await restaurarSesionGuardada();
       estado.textContent = migrados
         ? `Almacenamiento preparado. Se copiaron ${migrados} registro(s) anteriores.`
         : "Almacenamiento local preparado. Las nuevas visitas se guardarán en IndexedDB.";
@@ -820,6 +1426,215 @@ if ("serviceWorker" in navigator) {
       .catch(error => console.error("Error al registrar el service worker:", error));
   });
 }
+</script>
+<iframe
+  id="iframePuente"
+  title="Comunicación segura con Apps Script"
+  src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"
+  hidden>
+</iframe>  
+<div id="contenedorPicker" hidden>
+  <iframe
+    id="iframePicker"
+    title="Autorización de carpeta de fotografías"
+    width="100%"
+    height="550"
+    frameborder="0">
+  </iframe>
+</div>
+  
+<script>
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec";
+
+  // Comunicación directa con Apps Script mediante POST.
+  // El servidor valida el idToken y autoriza cada acción.
+
+  
+const iframePuente = document.getElementById("iframePuente");
+const solicitudesPendientesPuente = new Map();
+
+let contadorSolicitudesPuente = 0;
+let resolverPuenteListo = null;
+let promesaPuenteListo;
+let origenPuenteAutorizado = null;
+let ventanaPuenteAutorizada = null;
+let intervaloHandshakePuente = null;
+
+function crearPromesaPuenteListo() {
+  promesaPuenteListo = new Promise((resolve) => {
+    resolverPuenteListo = resolve;
+  });
+}
+
+crearPromesaPuenteListo();
+
+function esOrigenConfiablePuente(origen) {
+  try {
+    const host = new URL(origen).hostname;
+    return (
+      origen.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
+      )
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function iniciarHandshakePuente() {
+  if (!iframePuente || !iframePuente.contentWindow) return;
+  if (ventanaPuenteAutorizada) return;
+  iframePuente.contentWindow.postMessage(
+    { tipo: "INICIAR_PUENTE" },
+    "*"
+  );
+}
+
+function detenerHandshakePuente() {
+  if (intervaloHandshakePuente !== null) {
+    clearInterval(intervaloHandshakePuente);
+    intervaloHandshakePuente = null;
+  }
+}
+
+if (!iframePuente) {
+  throw new Error("No se encontró el iframe de comunicación con Apps Script.");
+}
+
+window.addEventListener("message", function(event) {
+  if (!esOrigenConfiablePuente(event.origin)) return;
+  if (!event.data || typeof event.data !== "object") return;
+
+  if (event.data.tipo === "PUENTE_LISTO") {
+    if (!event.source || typeof event.source.postMessage !== "function") return;
+    ventanaPuenteAutorizada = event.source;
+    origenPuenteAutorizado = event.origin;
+    detenerHandshakePuente();
+    if (resolverPuenteListo) {
+      resolverPuenteListo();
+      resolverPuenteListo = null;
+    }
+    return;
+  }
+
+  if (event.data.tipo !== "RESPUESTA_SERVIDOR") return;
+  if (event.source !== ventanaPuenteAutorizada) return;
+  if (event.origin !== origenPuenteAutorizado) return;
+
+  const pendiente = solicitudesPendientesPuente.get(event.data.idSolicitud);
+  if (!pendiente) return;
+
+  clearTimeout(pendiente.timeout);
+  solicitudesPendientesPuente.delete(event.data.idSolicitud);
+  pendiente.resolve(event.data.resultado);
+});
+
+iframePuente.addEventListener("load", function() {
+  // Despierta solicitudes que esperaban el handshake anterior.
+  // Al continuar, comprobarán y esperarán la nueva promesa.
+  if (resolverPuenteListo) {
+    resolverPuenteListo();
+    resolverPuenteListo = null;
+  }
+
+  // Cada carga invalida la autorización anterior: Apps Script puede
+  // redirigir a un origen distinto al volver a cargar.
+  ventanaPuenteAutorizada = null;
+  origenPuenteAutorizado = null;
+  crearPromesaPuenteListo();
+
+  iniciarHandshakePuente();
+  if (intervaloHandshakePuente === null) {
+    intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
+  }
+});
+
+iniciarHandshakePuente();
+if (!ventanaPuenteAutorizada) {
+  intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
+}
+
+async function solicitarServidor(solicitud) {
+  if (
+    !solicitud ||
+    !solicitud.accion ||
+    (!solicitud.idToken && !solicitud.sessionToken)
+  ) {
+    throw new Error("Falta la acción o la credencial de sesión.");
+  }
+
+  const inicioEsperaHandshake = Date.now();
+  while (!ventanaPuenteAutorizada || !origenPuenteAutorizado) {
+    const restante = 15000 - (Date.now() - inicioEsperaHandshake);
+    if (restante <= 0) {
+      throw new Error("No se pudo establecer comunicación con Apps Script.");
+    }
+
+    let timeoutHandshake;
+    try {
+      await Promise.race([
+        promesaPuenteListo,
+        new Promise((_, reject) => {
+          timeoutHandshake = setTimeout(() => reject(new Error(
+            "No se pudo establecer comunicación con Apps Script."
+          )), restante);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeoutHandshake);
+    }
+  }
+
+  const idSolicitud = "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
+
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(new Error("El servidor no respondió dentro del tiempo esperado."));
+    }, 30000);
+
+    solicitudesPendientesPuente.set(idSolicitud, {
+      resolve: resolve,
+      reject: reject,
+      timeout: timeout
+    });
+
+    try {
+      ventanaPuenteAutorizada.postMessage({
+        tipo: "SOLICITUD_SERVIDOR",
+        idSolicitud: idSolicitud,
+        solicitud: solicitud
+      }, origenPuenteAutorizado);
+    } catch (error) {
+      clearTimeout(timeout);
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(error);
+    }
+  }).then((resultado) => {
+    if (!resultado || typeof resultado !== "object") {
+      throw new Error("La respuesta del servidor está vacía o no es válida.");
+    }
+    return resultado;
+  });
+}
+
+window.addEventListener("online", async () => {
+  actualizarEstadoConexion();
+  if (!db) return;
+
+  // Si la app se abrió sin Internet, el iframe puede haber quedado
+  // en una página de error. Recargarlo permite repetir el handshake.
+  if (!ventanaPuenteAutorizada) {
+    iframePuente.src = URL_SERVIDOR;
+  }
+
+  await restaurarSesionGuardada();
+});
 </script>
 
 </body>

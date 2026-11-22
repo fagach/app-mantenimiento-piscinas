@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagnóstico de comunicación</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f1f5f9;color:#172033;padding:18px;line-height:1.5}
+main{max-width:560px;margin:auto;background:#fff;padding:22px;border-radius:14px}
+h1{font-size:22px;color:#075985}
+#estado{padding:14px;background:#e0f2fe;border-radius:8px;overflow-wrap:anywhere;white-space:pre-line}
+button{margin-top:14px;padding:12px 16px;border:0;border-radius:8px;background:#075985;color:white;font-size:16px}
+button:disabled{background:#94a3b8}
+iframe{display:block;width:100%;height:125px;border:1px solid #94a3b8;border-radius:8px;margin-top:12px}
+small{color:#475569}
+</style>
+</head>
+<body>
+<main>
+<h1>Diagnóstico de comunicación — iPhone</h1>
+<p>Primero se comprueba el saludo técnico. Cuando la conexión esté establecida, puedes ejecutar una solicitud de validación con un token ficticio e inválido. No inicia sesión ni envía solicitudes de visitas o fotografías.</p>
+<div id="estado" role="status">Iniciando…</div>
+<button id="probar" type="button" disabled>Probar respuesta del servidor (solo lectura)</button>
+<iframe id="puente" title="Vista del puente"
+src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"></iframe>
+<p><small>La prueba de servidor usa validarSesion con una credencial ficticia. No uses la PWA principal ni sincronices todavía.</small></p>
+</main>
+<script>
+(() => {
+"use strict";
+const estado=document.getElementById("estado");
+const iframe=document.getElementById("puente");
+const boton=document.getElementById("probar");
+let autorizado=false,intentos=0,cargas=0,ultimoMensaje="ninguno",ultimoOrigen="ninguno",ultimoEmisor="ninguno",ultimoDato="ninguno";
+let intervalo=null,limite=null,solicitudActiva=null;
+function origenPermitido(origen){
+ try{
+  const u=new URL(origen);
+  return u.protocol==="https:"&&(u.hostname==="script.google.com"||u.hostname==="script.googleusercontent.com"||u.hostname.endsWith(".script.googleusercontent.com")||u.hostname.endsWith("-script.googleusercontent.com"));
+ }catch(_){return false;}
+}
+function pintar(estadoFinal){
+ estado.textContent=
+  (estadoFinal||"ESPERANDO PUENTE_LISTO")+
+  "\nIframe cargado: "+cargas+
+  "\nIntentos de saludo: "+intentos+
+  "\nÚltimo mensaje: "+ultimoMensaje+
+  "\nOrigen recibido: "+ultimoOrigen+
+  "\nEmisor = ventana del iframe: "+ultimoEmisor+
+  "\nContenido recibido: "+ultimoDato;
+}
+function iniciar(){
+ if(autorizado||!iframe.contentWindow)return;
+ intentos++;
+ iframe.contentWindow.postMessage({tipo:"INICIAR_PUENTE"},"*");
+ pintar();
+}
+iframe.addEventListener("load",()=>{
+ cargas++;
+ iniciar();
+});
+iframe.addEventListener("error",()=>{
+ pintar("ERROR: el navegador informó que el iframe no pudo cargar.");
+});
+window.addEventListener("message",event=>{
+ if(!origenPermitido(event.origin))return;
+ ultimoOrigen=event.origin;
+ ultimoEmisor=event.source===iframe.contentWindow?"SÍ":"NO";
+ ultimoMensaje=event.data&&event.data.tipo?String(event.data.tipo):"mensaje sin tipo";
+ try{
+  ultimoDato=typeof event.data==="string"?event.data:JSON.stringify(event.data);
+ }catch(_){ultimoDato=String(event.data);}
+ if(event.data&&event.data.tipo==="RESPUESTA_SERVIDOR"&&solicitudActiva&&event.data.idSolicitud===solicitudActiva){
+  solicitudActiva=null;
+  boton.disabled=false;
+  pintar("RESPUESTA DEL SERVIDOR RECIBIDA");
+  return;
+ }
+ if(!event.data||event.data.tipo!=="PUENTE_LISTO"){
+  pintar();
+  return;
+ }
+ autorizado=true;
+ clearInterval(intervalo);clearTimeout(limite);
+ boton.disabled=false;
+ pintar("CONEXIÓN ESTABLECIDA");
+});
+boton.addEventListener("click",()=>{
+ if(!autorizado||!iframe.contentWindow||solicitudActiva)return;
+ const id="diagnostico-"+Date.now();
+ solicitudActiva=id;
+ boton.disabled=true;
+ pintar("SOLICITUD ENVIADA. ESPERANDO RESPUESTA…");
+ const origen=ultimoOrigen;
+ const emisor=window._ventanaPuenteDiagnostico;
+ // El puente anunció su disponibilidad desde el marco interno de Google.
+ // Se usa el origen confiable recibido y la ventana que envió PUENTE_LISTO.
+ if(!emisor){
+  solicitudActiva=null;boton.disabled=false;
+  pintar("No se pudo identificar la ventana del puente.");
+  return;
+ }
+ emisor.postMessage({
+  tipo:"SOLICITUD_SERVIDOR",
+  idSolicitud:id,
+  solicitud:{accion:"validarSesion",sessionToken:"TOKEN-FICTICIO-DIAGNOSTICO-NO-VALIDO"}
+ },origen);
+});
+window.addEventListener("message",event=>{
+ if(!origenPermitido(event.origin)||!event.data||event.data.tipo!=="PUENTE_LISTO")return;
+ window._ventanaPuenteDiagnostico=event.source;
+});
+intervalo=setInterval(iniciar,1000);
+limite=setTimeout(()=>{
+ clearInterval(intervalo);
+ if(!autorizado)pintar("SIN RESPUESTA PUENTE_LISTO");
+},15000);
+})();
+</script>
+</body>
+</html>
