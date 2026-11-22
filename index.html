@@ -372,8 +372,8 @@ function actualizarUbicacionBotonGoogle() {
       .insertAdjacentElement("beforebegin", textoAccesoDrive);
     document.getElementById("btnAutorizarCarpeta")
       .insertAdjacentElement("beforebegin", botonGoogle);
-    textoAccesoDrive.hidden = false;
-    botonGoogle.hidden = false;
+    textoAccesoDrive.hidden = Boolean(idTokenGoogle);
+    botonGoogle.hidden = Boolean(idTokenGoogle);
   } else {
     document.getElementById("estadoConexion")
       .insertAdjacentElement("afterend", botonGoogle);
