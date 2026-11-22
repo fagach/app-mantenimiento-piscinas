@@ -1177,10 +1177,6 @@ async function sincronizarPendientes() {
     }
     return migrados;
   }
-  window.addEventListener("online", async () => {
-    actualizarEstadoConexion();
-    if (db) await restaurarSesionGuardada();
-  });
   window.addEventListener("load", () => {
     if (db && !sessionTokenPWA) inicializarGoogleIdentity();
   });
@@ -1626,6 +1622,19 @@ async function solicitarServidor(solicitud) {
     return resultado;
   });
 }
+
+window.addEventListener("online", async () => {
+  actualizarEstadoConexion();
+  if (!db) return;
+
+  // Si la app se abrió sin Internet, el iframe puede haber quedado
+  // en una página de error. Recargarlo permite repetir el handshake.
+  if (!ventanaPuenteAutorizada) {
+    iframePuente.src = URL_SERVIDOR;
+  }
+
+  await restaurarSesionGuardada();
+});
 </script>
 
 </body>
