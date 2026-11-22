@@ -340,6 +340,9 @@
 
   let db = null;
   let sincronizacionEnCurso = false;
+  let conexionDisponible = navigator.onLine;
+  let intervaloComprobacionConexion = null;
+  let comprobacionConexionEnCurso = false;
   
 const ID_CLIENTE_OAUTH =
   "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
@@ -367,9 +370,52 @@ if (scriptGoogle) {
 }
 
 function actualizarEstadoConexion() {
-  estadoConexion.textContent = navigator.onLine
+  estadoConexion.textContent = conexionDisponible
     ? "Internet: conectado"
     : "Internet: sin conexión";
+}
+
+function iniciarComprobacionConexion() {
+  if (intervaloComprobacionConexion !== null) return;
+  intervaloComprobacionConexion = setInterval(comprobarConexionReal, 5000);
+}
+
+async function comprobarConexionReal() {
+  if (comprobacionConexionEnCurso) return;
+  comprobacionConexionEnCurso = true;
+
+  try {
+    // Comprueba conectividad real sin depender de navigator.onLine ni de la caché.
+    await fetch("https://www.google.com/generate_204", {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store"
+    });
+
+    const conexionSeRecupero = !conexionDisponible;
+    conexionDisponible = true;
+    actualizarEstadoConexion();
+
+    if (intervaloComprobacionConexion !== null) {
+      clearInterval(intervaloComprobacionConexion);
+      intervaloComprobacionConexion = null;
+    }
+
+    if (conexionSeRecupero || !ventanaPuenteAutorizada) {
+      // Renueva el puente incluso si el iframe conservaba una página de error.
+      iframePuente.src = URL_SERVIDOR;
+    }
+
+    if (db && (conexionSeRecupero || !ventanaPuenteAutorizada)) {
+      await restaurarSesionGuardada();
+    }
+  } catch (error) {
+    conexionDisponible = false;
+    actualizarEstadoConexion();
+    iniciarComprobacionConexion();
+  } finally {
+    comprobacionConexionEnCurso = false;
+  }
 }
 
 function actualizarEstadoSesion(mensaje) {
@@ -385,7 +431,7 @@ async function actualizarAvisoPendientes() {
     registro => registro.estado === "Pendiente de sincronización"
   ).length;
 
-  if (!navigator.onLine) {
+  if (!conexionDisponible) {
     actualizarEstadoSesion(
       cantidad > 0
         ? `Sin Internet. Hay ${cantidad} visita(s) pendiente(s). Puedes seguir registrando; se sincronizarán al recuperar Internet y validar tu sesión.`
@@ -404,14 +450,14 @@ async function actualizarAvisoPendientes() {
 
 actualizarEstadoConexion();
 actualizarEstadoSesion(
-  navigator.onLine
+  conexionDisponible
     ? "Verificando sesión de Google..."
     : "Sesión de Google sin verificar: no hay Internet."
 );
 
 async function restaurarSesionGuardada() {
   if (autenticacionEnCurso || !db) return;
-  if (!navigator.onLine) {
+  if (!conexionDisponible) {
     await actualizarAvisoPendientes();
     return;
   }
@@ -518,7 +564,7 @@ async function cerrarSesionVoluntaria() {
   actualizarEstadoSesion("Sesión cerrada en este dispositivo.");
   estadoUsuario.textContent = "Para sincronizar nuevamente, identifícate con Google.";
   if (tokenAnterior) {
-    if (navigator.onLine) {
+    if (conexionDisponible) {
       try {
         const resultadoCierre = await solicitarServidor({
           accion: "cerrarSesion",
@@ -744,7 +790,7 @@ async function recibirCredencialGoogle(respuesta) {
   
 function inicializarGoogleIdentity() {
   // Puede llamarse mientras se valida/restaura la sesión PWA.
-  if (!navigator.onLine) {
+  if (!conexionDisponible) {
     actualizarEstadoSesion(
       "Sesión de Google sin verificar: no hay Internet."
     );
@@ -1063,7 +1109,7 @@ async function sincronizarPendientes() {
   sincronizacionEnCurso = true;
 
   try {
-    if (!navigator.onLine) return;
+    if (!conexionDisponible) return;
 
     const registros = await obtenerTodas();
 
@@ -1181,8 +1227,10 @@ async function sincronizarPendientes() {
     if (db && !sessionTokenPWA) inicializarGoogleIdentity();
   });
   window.addEventListener("offline", async () => {
+    conexionDisponible = false;
     actualizarEstadoConexion();
     if (db) await actualizarAvisoPendientes();
+    iniciarComprobacionConexion();
   });
   
   
@@ -1623,18 +1671,21 @@ async function solicitarServidor(solicitud) {
   });
 }
 
-window.addEventListener("online", async () => {
-  actualizarEstadoConexion();
-  if (!db) return;
-
-  // Si la app se abrió sin Internet, el iframe puede haber quedado
-  // en una página de error. Recargarlo permite repetir el handshake.
-  if (!ventanaPuenteAutorizada) {
-    iframePuente.src = URL_SERVIDOR;
-  }
-
-  await restaurarSesionGuardada();
+window.addEventListener("online", () => {
+  comprobarConexionReal();
 });
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && !conexionDisponible) {
+    comprobarConexionReal();
+  }
+});
+
+window.addEventListener("pageshow", () => {
+  if (!conexionDisponible) comprobarConexionReal();
+});
+
+if (!conexionDisponible) iniciarComprobacionConexion();
 </script>
 
 </body>
