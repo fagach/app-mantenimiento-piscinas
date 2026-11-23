@@ -1417,43 +1417,84 @@ async function mostrarRegistros() {
       comparacionFechaFoto: "NO VERIFICABLE"
     };
 
-        try {
+    let guardadoLocal = false;
+
+    try {
+      // La primera escritura es la confirmación principal del guardado local.
       await guardarEnDB(registro);
+      guardadoLocal = true;
 
-      registro.fechaEXIFMantenimiento = fotoMantenimiento
-      ? await leerFechaEXIF(fotoMantenimiento)
-      : null;
+      let avisoMetadatos = "";
 
-      registro.comparacionFechaFoto = compararFechaFoto(
-      registro.fechaEXIFMantenimiento,
-      fechaVisita
-    );
+      // Los datos EXIF son complementarios: un fallo al leerlos no invalida
+      // la visita que ya quedó guardada en IndexedDB.
+      try {
+        registro.fechaEXIFMantenimiento = fotoMantenimiento
+          ? await leerFechaEXIF(fotoMantenimiento)
+          : null;
 
-    await guardarEnDB(registro);    
-      
-      
-      const mensajeServidor = "Pendiente de sincronización con el servidor.";
+        registro.comparacionFechaFoto = compararFechaFoto(
+          registro.fechaEXIFMantenimiento,
+          fechaVisita
+        );
+      } catch (error) {
+        registro.fechaEXIFMantenimiento = null;
+        registro.comparacionFechaFoto = "NO VERIFICABLE";
+        avisoMetadatos =
+          " No se pudieron leer los datos de fecha de la fotografía.";
+        console.warn("No se pudieron procesar los datos EXIF:", error);
+      }
+
+      // Si esta segunda escritura falla, se conserva la primera versión
+      // guardada y la visita sigue pendiente de sincronización.
+      try {
+        await guardarEnDB(registro);
+      } catch (error) {
+        avisoMetadatos =
+          " La visita quedó guardada, pero no se pudieron actualizar los datos EXIF.";
+        console.warn("No se pudieron guardar los datos EXIF en IndexedDB:", error);
+      }
+
+      const mensajeServidor =
+        "Pendiente de sincronización con el servidor.";
 
       estado.textContent =
-        "Visita guardada en este navegador. " + mensajeServidor;
+        "Visita guardada en este navegador. " +
+        mensajeServidor +
+        avisoMetadatos;
 
       // Iniciar la sincronización sin detener el formulario.
       sincronizarPendientes().catch(error => {
         console.error("Error en la sincronización:", error);
       });
 
-      estado.textContent =
-        "Visita guardada en este navegador. " + mensajeServidor;
-
       formulario.reset();
       limpiarParametrosVisita();
       camposCantidad.forEach(campo => mostrarError(campo, ""));
       await mostrarRegistros();
 
-    
     } catch (error) {
-      estado.textContent =
-        "No se pudo guardar. Comprueba el espacio disponible del navegador e inténtalo de nuevo.";
+      console.error("Error después del intento de guardado local:", error);
+
+      if (guardadoLocal) {
+        // No informar que falló el guardado: la primera escritura sí terminó.
+        estado.textContent =
+          "La visita sí quedó guardada en este navegador y permanece pendiente de sincronización. " +
+          "No la registres nuevamente. Hubo un problema al actualizar la pantalla o los datos complementarios.";
+
+        formulario.reset();
+        limpiarParametrosVisita();
+        camposCantidad.forEach(campo => mostrarError(campo, ""));
+
+        try {
+          await mostrarRegistros();
+        } catch (errorListado) {
+          console.warn("No se pudo actualizar el listado local:", errorListado);
+        }
+      } else {
+        estado.textContent =
+          "No se pudo confirmar el guardado local. Comprueba el espacio disponible del navegador antes de volver a intentarlo.";
+      }
     }
   });
 
