@@ -1120,15 +1120,39 @@ function convertirFotoBase64(archivo) {
 
   
 
-async function subirFotoDrive(archivo) {
+async function reservarIdFotoDrive() {
+  if (!sessionTokenPWA) {
+    throw new Error("La sesión venció. Identifícate nuevamente.");
+  }
+
+  const resultado = await solicitarServidor({
+    accion: "reservarIdFoto",
+    sessionToken: sessionTokenPWA
+  });
+
+  if (!resultado || !resultado.ok || !resultado.idArchivo) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no pudo reservar un identificador para la fotografía."
+    );
+  }
+
+  return resultado.idArchivo;
+}
+
+async function subirFotoDrive(archivo, idArchivo) {
   if (!archivo) return "";
   if (!sessionTokenPWA) throw new Error("La sesión venció. Identifícate nuevamente.");
+  if (!idArchivo) {
+    throw new Error("La fotografía no tiene un identificador reservado.");
+  }
 
   const datosBase64 = await convertirFotoBase64(archivo);
 
   const resultado = await solicitarServidor({
     accion: "guardarFoto",
     sessionToken: sessionTokenPWA,
+    idArchivo: idArchivo,
     datosBase64: datosBase64,
     nombreOriginal: archivo.name,
     tipoMime: archivo.type
@@ -1174,13 +1198,32 @@ async function sincronizarPendientes() {
           registro.fotoMantenimiento || registro.foto || null;
 
         if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
-          const enlace = await subirFotoDrive(fotoMantenimiento);
+          // Reservar y persistir el ID antes de iniciar la carga.
+          // Si Drive guarda la foto pero se pierde la respuesta, el reintento
+          // reutiliza este mismo ID y no crea una segunda copia.
+          if (!registro.idDriveFotoMantenimiento) {
+            registro.idDriveFotoMantenimiento = await reservarIdFotoDrive();
+            await guardarEnDB(registro);
+          }
+
+          const enlace = await subirFotoDrive(
+            fotoMantenimiento,
+            registro.idDriveFotoMantenimiento
+          );
           registro.enlaceFotoMantenimiento = enlace;
           await guardarEnDB(registro);
         }
 
         if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
-          const enlace = await subirFotoDrive(registro.fotoNovedades);
+          if (!registro.idDriveFotoNovedades) {
+            registro.idDriveFotoNovedades = await reservarIdFotoDrive();
+            await guardarEnDB(registro);
+          }
+
+          const enlace = await subirFotoDrive(
+            registro.fotoNovedades,
+            registro.idDriveFotoNovedades
+          );
           registro.enlaceFotoNovedades = enlace;
           await guardarEnDB(registro);
         }
