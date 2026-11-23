@@ -1247,6 +1247,11 @@ async function sincronizarPendientes() {
           inicializarGoogleIdentity();
           await actualizarAvisoPendientes();
           break;
+        } else {
+          // Informar al operador sin retirar ni alterar la visita pendiente.
+          estado.textContent =
+            "No se pudo sincronizar una visita. Sigue guardada en este dispositivo y pendiente de envío. " +
+            "La aplicación volverá a intentarlo cuando pueda comunicarse con el servidor.";
         }
       }
     }
