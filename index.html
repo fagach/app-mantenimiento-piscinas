@@ -412,12 +412,19 @@ async function comprobarConexionReal() {
   if (comprobacionConexionEnCurso) return;
   comprobacionConexionEnCurso = true;
 
+  let temporizadorConexion = null;
+
   try {
+    // Evita que una petición bloqueada deje la comprobación ocupada indefinidamente.
+    const controlador = new AbortController();
+    temporizadorConexion = setTimeout(() => controlador.abort(), 8000);
+
     // Comprueba conectividad real sin depender de navigator.onLine ni de la caché.
     await fetch("https://www.google.com/generate_204", {
       method: "GET",
       mode: "no-cors",
-      cache: "no-store"
+      cache: "no-store",
+      signal: controlador.signal
     });
 
     const conexionSeRecupero = !conexionDisponible;
@@ -446,6 +453,7 @@ async function comprobarConexionReal() {
     actualizarEstadoConexion();
     iniciarComprobacionConexion();
   } finally {
+    if (temporizadorConexion !== null) clearTimeout(temporizadorConexion);
     comprobacionConexionEnCurso = false;
   }
 }
