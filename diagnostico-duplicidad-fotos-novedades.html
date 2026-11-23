@@ -1,0 +1,1888 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer-when-downgrade">
+  <meta name="theme-color" content="#075985">
+  <title>Diagnóstico aislado - duplicidad de foto Novedades</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    * { box-sizing: border-box; }
+
+    /* Evita que el gesto de arrastre hacia abajo recargue la PWA. */
+    html, body {
+      overscroll-behavior-y: none;
+    }
+
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #172033;
+    }
+
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 22px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 3px 12px #00000012;
+    }
+
+    h1 {
+      margin-top: 0;
+      color: #075985;
+      font-size: 24px;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: bold;
+    }
+
+    input, select, textarea, button {
+      width: 100%;
+      margin-top: 7px;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    input, select, textarea { background: #fff; }
+    input[readonly], select:disabled {
+      background: #f1f5f9;
+      color: #334155;
+      opacity: 1;
+      cursor: not-allowed;
+    }
+
+    button {
+      margin-top: 20px;
+      border: 0;
+      background: #075985;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secondary { background: #475569; }
+
+    .note {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .error {
+      display: none;
+      margin-top: 5px;
+      color: #b91c1c;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .error.visible { display: block; }
+
+    .indicador {
+      margin: 8px 0;
+      padding: 9px 11px;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .indicador-sesion {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .indicador-conexion {
+      background: #e0f2fe;
+      color: #075985;
+    }
+
+    #estado {
+      margin-top: 16px;
+      padding: 12px;
+      background: #e0f2fe;
+      border-radius: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    #lista {
+      padding-left: 20px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+<style>
+    #accesoGoogle, #autorizacionFotos, #formulario, #estado,
+    main > h2, main > p.note, #lista, #exportar { display: none !important; }
+    #panelDiagnostico .note { display: block !important; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Diagnóstico de foto Novedades</h1>
+  <section id="panelDiagnostico" style="padding:16px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc">
+    <p><strong>Prueba aislada de reintento de Novedades</strong></p>
+    <p class="note">Esta pantalla solo volverá a enviar la foto de Novedades de la visita de prueba usando el ID de Drive que ya tiene asignado. No volverá a enviar la visita ni escribirá en IndexedDB.</p>
+    <button type="button" id="btnReintentarFoto" disabled>Reintentar subida de la foto de Novedades</button>
+    <p id="estadoDiagnostico" role="status" aria-live="polite">Preparando lectura local...</p>
+  </section>
+  <div id="accesoGoogle">
+  <p class="note"><strong>Acceso al sistema</strong></p>
+  <p id="estadoSesion" class="indicador indicador-sesion" role="status" aria-live="polite">
+    Verificando sesión de Google...
+  </p>
+  <p id="estadoConexion" class="indicador indicador-conexion" role="status" aria-live="polite">
+    Comprobando conexión...
+  </p>
+  <div id="botonGoogle"></div>
+  <p id="estadoUsuario" class="note" aria-live="polite">
+    Debes identificarte con tu cuenta de Google para sincronizar visitas.
+  </p>
+  <button type="button" class="secondary" id="btnCerrarSesion" hidden>
+    Cerrar sesión
+  </button>
+</div>
+
+  <div id="autorizacionFotos" hidden>
+  <p class="note"><strong>Administración</strong></p>
+  <p id="textoAccesoDrive" class="note" hidden>
+    Para autorizar o cambiar la carpeta de fotografías, confirma tu cuenta de Google:
+  </p>
+
+  <button
+    type="button"
+    class="secondary"
+    id="btnAutorizarCarpeta">
+    Autorizar carpeta de fotografías
+  </button>
+
+  <p id="estadoAutorizacionFotos" class="note" aria-live="polite"></p>
+</div>
+  
+
+  
+<form id="formulario">
+  <label for="cliente">Cliente</label>
+  <input id="cliente" name="cliente" type="text"
+         autocomplete="off" required>
+
+  <label for="operador">Operador</label>
+  <input id="operador" name="operador" type="text"
+         autocomplete="off" required>
+
+  <label for="tipo">Tipo de visita</label>
+  <select id="tipo" name="tipo" required>
+    <option value="" selected disabled>Selecciona el tipo de visita</option>
+    <option value="Programada">Programada</option>
+    <option value="No programada">No programada</option>
+  </select>
+
+  <label>
+    <input type="checkbox" id="aspirada" name="aspirada">
+    Aspirada
+  </label>
+
+  <label>
+    <input type="checkbox" id="cepillada" name="cepillada">
+    Cepillada
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaBordes" name="limpiezaBordes">
+    Limpieza de Bordes
+  </label>
+
+  <label for="cloro">Cloro (Lbs)</label>
+  <input class="cantidad" id="cloro" name="cloro"
+         type="text" inputmode="decimal" placeholder="Ej.: 1,5">
+  <div class="error" id="error-cloro" aria-live="polite"></div>
+
+  <label for="pastilla">Pastilla (Unid)</label>
+  <input class="cantidad" id="pastilla" name="pastilla"
+         type="text" inputmode="decimal" placeholder="Ej.: 1">
+  <div class="error" id="error-pastilla" aria-live="polite"></div>
+
+  <label for="floculante">Floculante (Lts)</label>
+  <input class="cantidad" id="floculante" name="floculante"
+         type="text" inputmode="decimal" placeholder="Ej.: 0,5">
+  <div class="error" id="error-floculante" aria-live="polite"></div>
+
+  <label for="sal">Sal (Kgs)</label>
+  <input class="cantidad" id="sal" name="sal"
+         type="text" inputmode="decimal" placeholder="Ej.: 2,5">
+  <div class="error" id="error-sal" aria-live="polite"></div>
+
+  <label>
+    <input type="checkbox" id="limpiezaFiltro" name="limpiezaFiltro">
+    Limpieza Filtro
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaCuba" name="limpiezaCuba">
+    Limpieza Cuba
+  </label>
+
+  <label>
+    <input type="checkbox" id="limpiezaImpulsor" name="limpiezaImpulsor">
+    Limpieza Impulsor
+  </label>
+
+  <label>
+    <input type="checkbox" id="bombaMantenimiento" name="bombaMantenimiento">
+    Bajada de Nivel
+  </label>
+
+  <label for="novedades">Observaciones</label>
+  <textarea id="novedades" name="novedades" rows="3"></textarea>
+
+  <label for="fotoMantenimiento">Foto Mantenimiento (obligatoria)</label>
+  <input id="fotoMantenimiento" name="fotoMantenimiento"
+         type="file" accept="image/*" required>
+
+  <label for="fotoNovedades">Foto Novedades (opcional)</label>
+  <input id="fotoNovedades" name="fotoNovedades"
+         type="file" accept="image/*">
+
+  <button type="submit">Guardar visita en este dispositivo</button>
+</form>
+
+  <div id="estado" role="status">
+    Todavía no hay visitas guardadas en esta sesión.
+  </div>
+
+  <h2>Visitas guardadas</h2>
+  <p class="note">
+    Registros almacenados localmente en este navegador.
+  </p>
+  <ul id="lista"></ul>
+
+  <button type="button" class="secondary" id="exportar">
+    Exportar registros de prueba (JSON)
+  </button>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const MODO_DIAGNOSTICO = true;
+  const CLAVE = "visitasPiscinasPendientes";
+  const DB_NOMBRE = "mantenimientoPiscinasDB";
+  const DB_VERSION = 1;
+
+  const formulario = document.getElementById("formulario");
+  const estado = document.getElementById("estado");
+  const lista = document.getElementById("lista");
+  const camposCantidad = Array.from(document.querySelectorAll(".cantidad"));
+
+  // Recibe los mismos parámetros entry.* que genera el enlace de WhatsApp.
+  const parametrosVisita = new URLSearchParams(window.location.search);
+  const visitaDesdeEnlace = {
+    operador: parametrosVisita.get("entry.51684031") || "",
+    cliente: parametrosVisita.get("entry.1166786524") || "",
+    tipo: parametrosVisita.get("entry.1764256793") || ""
+  };
+  const hayParametrosVisita = Object.values(visitaDesdeEnlace)
+    .some(valor => valor !== "");
+  const enlaceVisitaValido =
+    Boolean(visitaDesdeEnlace.operador.trim()) &&
+    Boolean(visitaDesdeEnlace.cliente.trim()) &&
+    ["Programada", "No programada"].includes(visitaDesdeEnlace.tipo);
+
+  function aplicarParametrosVisita() {
+    if (!enlaceVisitaValido) return;
+
+    document.getElementById("cliente").value = visitaDesdeEnlace.cliente;
+    document.getElementById("operador").value = visitaDesdeEnlace.operador;
+    document.getElementById("tipo").value = visitaDesdeEnlace.tipo;
+
+    document.getElementById("cliente").readOnly = true;
+    document.getElementById("operador").readOnly = true;
+    document.getElementById("tipo").disabled = true;
+  }
+
+  function quitarParametrosVisitaURL() {
+    // Quitar solo los parámetros de precarga; conservar cualquier otro parámetro.
+    const urlActual = new URL(window.location.href);
+    urlActual.searchParams.delete("entry.51684031");
+    urlActual.searchParams.delete("entry.1166786524");
+    urlActual.searchParams.delete("entry.1764256793");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      urlActual.pathname + urlActual.search + urlActual.hash
+    );
+  }
+
+  function limpiarParametrosVisita() {
+    const cliente = document.getElementById("cliente");
+    const operador = document.getElementById("operador");
+    const tipo = document.getElementById("tipo");
+
+    cliente.value = "";
+    cliente.defaultValue = "";
+    cliente.readOnly = false;
+    operador.value = "";
+    operador.defaultValue = "";
+    operador.readOnly = false;
+    tipo.selectedIndex = 0;
+    tipo.disabled = false;
+
+    quitarParametrosVisitaURL();
+  }
+
+  if (enlaceVisitaValido) {
+    aplicarParametrosVisita();
+    // Los datos ya están en los campos: retirar de inmediato la precarga de la URL.
+    // Así, una recarga no vuelve a aplicar el mismo enlace después de guardar.
+    quitarParametrosVisitaURL();
+    document.getElementById("estadoUsuario").textContent =
+      "Visita cargada desde WhatsApp. Cliente, operador y tipo están bloqueados.";
+  } else if (hayParametrosVisita) {
+    document.getElementById("estadoUsuario").textContent =
+      "El enlace de visita está incompleto o contiene datos no válidos. Ábrelo nuevamente desde WhatsApp.";
+    formulario.querySelector('button[type="submit"]').disabled = true;
+  }
+
+  let db = null;
+  let sincronizacionEnCurso = false;
+  let conexionDisponible = navigator.onLine;
+  let intervaloComprobacionConexion = null;
+  let comprobacionConexionEnCurso = false;
+  
+const ID_CLIENTE_OAUTH =
+  "487769683106-m3ofsngsbmbpk0akjtvbmbnhdjml4pgb.apps.googleusercontent.com";
+let idTokenGoogle = null; // Solo memoria: OAuth Google para Picker.
+const CLAVE_SESION_PWA = "sesionPWA12h";
+const CLAVE_CIERRE_PENDIENTE = "sesionPWA12h_cierrePendiente";
+let sessionTokenPWA = localStorage.getItem(CLAVE_SESION_PWA) || "";
+let perfilSesion = null;
+let autenticacionEnCurso = false;
+// Conserva una solicitud de restauración que llegue mientras otra está en curso.
+let restauracionSesionSolicitada = false;
+
+const estadoUsuario = document.getElementById("estadoUsuario");
+const estadoSesion = document.getElementById("estadoSesion");
+const estadoConexion = document.getElementById("estadoConexion");
+let googleIdentityInicializado = false;
+
+function actualizarUbicacionBotonGoogle() {
+  const botonGoogle = document.getElementById("botonGoogle");
+  const textoAccesoDrive = document.getElementById("textoAccesoDrive");
+  const esAdministradorActivo =
+    Boolean(sessionTokenPWA) && perfilSesion?.perfil === "Administrador";
+
+  if (esAdministradorActivo) {
+    document.getElementById("btnAutorizarCarpeta")
+      .insertAdjacentElement("beforebegin", textoAccesoDrive);
+    document.getElementById("btnAutorizarCarpeta")
+      .insertAdjacentElement("beforebegin", botonGoogle);
+    // Mantener el acceso OAuth disponible para renovar el permiso de Drive
+    // cuando se necesite autorizar o cambiar la carpeta más adelante.
+    textoAccesoDrive.hidden = false;
+    botonGoogle.hidden = false;
+  } else {
+    document.getElementById("estadoConexion")
+      .insertAdjacentElement("afterend", botonGoogle);
+    textoAccesoDrive.hidden = true;
+    botonGoogle.hidden = Boolean(sessionTokenPWA);
+  }
+}
+
+const scriptGoogle = document.querySelector(
+  'script[src="https://accounts.google.com/gsi/client"]'
+);
+if (scriptGoogle) {
+  scriptGoogle.addEventListener("load", () => {
+    // No iniciar Google Identity si ya hay una sesión PWA guardada.
+    // El administrador lo inicializa después de validar su sesión, para usar Picker.
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
+}
+
+function actualizarEstadoConexion() {
+  estadoConexion.textContent = conexionDisponible
+    ? "Internet: conectado"
+    : "Internet: sin conexión";
+}
+
+function iniciarComprobacionConexion() {
+  if (intervaloComprobacionConexion !== null) return;
+  intervaloComprobacionConexion = setInterval(comprobarConexionReal, 5000);
+}
+
+async function comprobarConexionReal() {
+  if (comprobacionConexionEnCurso) return;
+  comprobacionConexionEnCurso = true;
+
+  let temporizadorConexion = null;
+
+  try {
+    // Evita que una petición bloqueada deje la comprobación ocupada indefinidamente.
+    const controlador = new AbortController();
+    temporizadorConexion = setTimeout(() => controlador.abort(), 8000);
+
+    // Comprueba conectividad real sin depender de navigator.onLine ni de la caché.
+    await fetch("https://www.google.com/generate_204", {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store",
+      signal: controlador.signal
+    });
+
+    const conexionSeRecupero = !conexionDisponible;
+    conexionDisponible = true;
+    actualizarEstadoConexion();
+
+    if (intervaloComprobacionConexion !== null) {
+      clearInterval(intervaloComprobacionConexion);
+      intervaloComprobacionConexion = null;
+    }
+
+    if (conexionSeRecupero || !ventanaPuenteAutorizada) {
+      // Invalida el canal anterior y prepara la espera antes de recargar el iframe.
+      // Así, la restauración de sesión espera el nuevo handshake de Apps Script.
+      ventanaPuenteAutorizada = null;
+      origenPuenteAutorizado = null;
+      crearPromesaPuenteListo();
+      iframePuente.src = URL_SERVIDOR;
+    }
+
+    if (db && (conexionSeRecupero || !ventanaPuenteAutorizada)) {
+      await restaurarSesionGuardada();
+    }
+  } catch (error) {
+    conexionDisponible = false;
+    actualizarEstadoConexion();
+    iniciarComprobacionConexion();
+  } finally {
+    if (temporizadorConexion !== null) clearTimeout(temporizadorConexion);
+    comprobacionConexionEnCurso = false;
+  }
+}
+
+function actualizarEstadoSesion(mensaje) {
+  estadoSesion.textContent = mensaje;
+}
+
+// Informa sobre visitas pendientes sin bloquear nunca el registro local.
+async function actualizarAvisoPendientes() {
+  if (!db) return 0;
+
+  const registros = await obtenerTodas();
+  const cantidad = registros.filter(
+    registro => registro.estado === "Pendiente de sincronización"
+  ).length;
+
+  if (!conexionDisponible) {
+    actualizarEstadoSesion(
+      cantidad > 0
+        ? `Sin Internet. Hay ${cantidad} visita(s) pendiente(s). Puedes seguir registrando; se sincronizarán al recuperar Internet y validar tu sesión.`
+        : "Sin Internet. Puedes seguir registrando visitas; se guardarán en este dispositivo y se sincronizarán al recuperar Internet."
+    );
+  } else if (!sessionTokenPWA) {
+    actualizarEstadoSesion(
+      cantidad > 0
+        ? `Hay ${cantidad} visita(s) pendiente(s). Inicia sesión con Google para sincronizarlas. Puedes seguir registrando visitas; se guardarán en este dispositivo.`
+        : "Inicia sesión con Google para sincronizar. También puedes registrar visitas sin conexión; quedarán guardadas en este dispositivo."
+    );
+  }
+
+  return cantidad;
+}
+
+actualizarEstadoConexion();
+actualizarEstadoSesion(
+  conexionDisponible
+    ? "Verificando sesión de Google..."
+    : "Sesión de Google sin verificar: no hay Internet."
+);
+
+async function restaurarSesionGuardada() {
+  if (MODO_DIAGNOSTICO) return;
+  if (!db) return;
+  if (autenticacionEnCurso) {
+    restauracionSesionSolicitada = true;
+    return;
+  }
+  if (!conexionDisponible) {
+    await actualizarAvisoPendientes();
+    return;
+  }
+  autenticacionEnCurso = true;
+  actualizarEstadoSesion("Comprobando la sesión guardada...");
+  try {
+    const cierrePendiente = localStorage.getItem(CLAVE_CIERRE_PENDIENTE) || "";
+    if (cierrePendiente) {
+      try {
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: cierrePendiente
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        // No impedir la validación de la sesión actual por un fallo temporal.
+        console.warn("Revocación pendiente; se reintentará:", error);
+      }
+    }
+    if (!sessionTokenPWA) {
+      actualizarUbicacionBotonGoogle();
+      inicializarGoogleIdentity();
+      await actualizarAvisoPendientes();
+      return;
+    }
+    const resultado = await solicitarServidor({
+      accion: "validarSesion",
+      sessionToken: sessionTokenPWA
+    });
+    if (!resultado || !resultado.ok || !resultado.valida) {
+      throw new Error(resultado?.error || "La sesión ya no es válida.");
+    }
+    perfilSesion = resultado;
+    document.getElementById("btnCerrarSesion").hidden = false;
+    document.getElementById("autorizacionFotos").hidden =
+      resultado.perfil !== "Administrador";
+    actualizarUbicacionBotonGoogle();
+    estadoUsuario.textContent = "Sesión recuperada: " + resultado.correo + ".";
+    actualizarEstadoSesion("Sesión activa. Vence a las 12 horas de su creación.");
+    if (resultado.perfil === "Administrador") {
+      const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
+      try {
+        const carpeta = await solicitarServidor({
+          accion: "consultarCarpetaFotos",
+          sessionToken: sessionTokenPWA
+        });
+        if (!carpeta || !carpeta.ok) {
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
+        }
+        estadoCarpeta.textContent = carpeta.autorizada
+          ? "Carpeta autorizada: " + carpeta.nombre
+          : "Carpeta de fotografías pendiente de autorización.";
+      } catch (error) {
+        estadoCarpeta.textContent =
+          "No se pudo consultar la autorización: " + error.message;
+      }
+      // El acceso Google queda dentro de Administración, separado del inicio de sesión.
+      inicializarGoogleIdentity();
+    }
+    await sincronizarPendientes();
+  } catch (error) {
+    const mensaje = String(error && error.message ? error.message : error);
+    const sesionInvalidada =
+      /La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i
+        .test(mensaje);
+
+    if (sesionInvalidada) {
+      sessionTokenPWA = "";
+      localStorage.removeItem(CLAVE_SESION_PWA);
+      perfilSesion = null;
+      document.getElementById("btnCerrarSesion").hidden = true;
+      document.getElementById("autorizacionFotos").hidden = true;
+      actualizarUbicacionBotonGoogle();
+      actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google.");
+      estadoUsuario.textContent = mensaje;
+      inicializarGoogleIdentity();
+      await actualizarAvisoPendientes();
+    } else {
+      // Una falla temporal de red o de Sheets no debe borrar una sesión válida.
+      actualizarEstadoSesion("No se pudo comprobar la sesión por un problema temporal. Se conserva para reintentar.");
+      estadoUsuario.textContent = mensaje;
+    }
+  } finally {
+    autenticacionEnCurso = false;
+    if (restauracionSesionSolicitada) {
+      restauracionSesionSolicitada = false;
+      if (conexionDisponible && db) {
+        restaurarSesionGuardada().catch(error => {
+          console.error("No se pudo reintentar la restauración de sesión:", error);
+        });
+      }
+    }
+  }
+}
+
+async function cerrarSesionVoluntaria() {
+  const tokenAnterior = sessionTokenPWA;
+  sessionTokenPWA = "";
+  localStorage.removeItem(CLAVE_SESION_PWA);
+  idTokenGoogle = null;
+  perfilSesion = null;
+  document.getElementById("btnCerrarSesion").hidden = true;
+  document.getElementById("autorizacionFotos").hidden = true;
+  actualizarUbicacionBotonGoogle();
+  actualizarEstadoSesion("Sesión cerrada en este dispositivo.");
+  estadoUsuario.textContent = "Para sincronizar nuevamente, identifícate con Google.";
+  if (tokenAnterior) {
+    if (conexionDisponible) {
+      try {
+        const resultadoCierre = await solicitarServidor({
+          accion: "cerrarSesion",
+          sessionToken: tokenAnterior
+        });
+        if (!resultadoCierre || !resultadoCierre.ok || !resultadoCierre.cerrada) {
+          throw new Error(
+            resultadoCierre?.error || "El servidor no confirmó la revocación de la sesión."
+          );
+        }
+        localStorage.removeItem(CLAVE_CIERRE_PENDIENTE);
+      } catch (error) {
+        localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+        estadoUsuario.textContent += " La revocación del servidor queda pendiente hasta recuperar Internet.";
+      }
+    } else {
+      localStorage.setItem(CLAVE_CIERRE_PENDIENTE, tokenAnterior);
+      estadoUsuario.textContent += " La revocación del servidor se enviará al recuperar Internet.";
+    }
+  }
+}
+
+document.getElementById("btnCerrarSesion")
+  .addEventListener("click", cerrarSesionVoluntaria);
+
+function iniciarAutorizacionCarpeta() {
+  if (!idTokenGoogle) {
+    estadoUsuario.textContent =
+      "Primero debes identificarte con Google.";
+    return;
+  }
+
+  const contenedor = document.getElementById("contenedorPicker");
+  const iframe = document.getElementById("iframePicker");
+
+  contenedor.hidden = false;
+
+  iframe.src = URL_SERVIDOR + "?selector=1";
+}
+
+document.getElementById("btnAutorizarCarpeta")
+  .addEventListener("click", iniciarAutorizacionCarpeta);
+
+let ventanaSelectorAutorizada = null;
+
+window.addEventListener("message", function(event) {
+  const estadoFotos = document.getElementById("estadoAutorizacionFotos");
+
+  // Apps Script puede insertar un marco intermedio. El selector avisa a window.top;
+  // por eso se valida el origen y se responde a la ventana que envió el mensaje.
+  let origenConfiable = false;
+
+  try {
+    const host = new URL(event.origin).hostname;
+    origenConfiable =
+      event.origin.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
+      );
+  } catch (error) {
+    return;
+  }
+
+  if (!origenConfiable || !event.data || typeof event.data !== "object") return;
+
+  const tipoMensaje = event.data.tipo;
+  if (tipoMensaje !== "PICKER_LISTO" && tipoMensaje !== "RESULTADO_PICKER") return;
+
+  if (tipoMensaje === "PICKER_LISTO") {
+    if (!idTokenGoogle || !event.source) {
+      estadoFotos.textContent =
+        "El selector avisó que está listo, pero no hay una sesión de Google disponible.";
+      return;
+    }
+
+    ventanaSelectorAutorizada = event.source;
+    estadoFotos.textContent =
+      "Selector conectado. Enviando autorización de Google...";
+
+    event.source.postMessage({
+      tipo: "AUTORIZAR_PICKER",
+      idToken: idTokenGoogle
+    }, event.origin);
+    return;
+  }
+
+  if (event.source !== ventanaSelectorAutorizada) {
+    estadoFotos.textContent =
+      "Se recibió un resultado desde una ventana distinta del selector autorizado.";
+    return;
+  }
+
+  estadoFotos.textContent =
+    event.data.ok
+      ? "Carpeta autorizada: " + String(event.data.nombre || "")
+      : event.data.cancelado
+        ? "Selección cancelada."
+        : "La carpeta seleccionada no es la esperada.";
+
+  if (event.data.ok) {
+    document.getElementById("contenedorPicker").hidden = true;
+    ventanaSelectorAutorizada = null;
+  }
+});
+  
+
+async function recibirCredencialGoogle(respuesta) {
+  // El idToken Google vive solo en memoria. No se guarda en localStorage ni IndexedDB.
+  if (!respuesta || !respuesta.credential) {
+    document.getElementById("botonGoogle").hidden = false;
+    estadoUsuario.textContent =
+      "No se pudo completar la identificación de Google.";
+    return;
+  }
+
+  const credencialGoogle = respuesta.credential;
+  actualizarEstadoSesion("Credencial recibida. Verificando autorización...");
+  estadoUsuario.textContent =
+    "Cuenta de Google identificada. Comprobando autorización...";
+
+  try {
+    // Si ya existe una sesión PWA, Google OAuth se utiliza únicamente para
+    // el Picker. Nunca se crea otra sesión ni se reinician sus 12 horas.
+    if (sessionTokenPWA) {
+      const sesionActual = await solicitarServidor({
+        accion: "validarSesion",
+        sessionToken: sessionTokenPWA
+      });
+      if (!sesionActual || !sesionActual.ok || !sesionActual.valida) {
+        throw new Error(sesionActual?.error || "La sesión PWA ya no es válida.");
+      }
+
+      const identidad = await solicitarServidor({
+        accion: "consultarPerfil",
+        idToken: credencialGoogle
+      });
+      if (!identidad || !identidad.ok) {
+        throw new Error(identidad?.error || "No se pudo verificar la cuenta de Google.");
+      }
+      if (
+        String(identidad.correo || "").toLowerCase() !==
+        String(sesionActual.correo || "").toLowerCase()
+      ) {
+        throw new Error("La cuenta de Google no coincide con la sesión activa.");
+      }
+      if (
+        sesionActual.perfil !== "Administrador" ||
+        identidad.perfil !== "Administrador"
+      ) {
+        throw new Error("Solo el administrador puede autorizar la carpeta.");
+      }
+
+      perfilSesion = sesionActual;
+      idTokenGoogle = credencialGoogle;
+      document.getElementById("botonGoogle").hidden = false;
+      estadoUsuario.textContent =
+        "Cuenta de administrador verificada. Ya puedes autorizar la carpeta.";
+      actualizarEstadoSesion(
+        "Sesión PWA original conservada. El acceso de Google se usa solo para el Picker."
+      );
+      return;
+    }
+
+    // Primer inicio de sesión: aquí se crea la sesión PWA de 12 horas.
+    const sesion = await solicitarServidor({
+      accion: "crearSesion",
+      idToken: credencialGoogle
+    });
+    if (!sesion || !sesion.ok || !sesion.sessionToken) {
+      throw new Error(sesion?.error || "No se pudo crear la sesión temporal.");
+    }
+
+    sessionTokenPWA = sesion.sessionToken;
+    localStorage.setItem(CLAVE_SESION_PWA, sessionTokenPWA);
+    perfilSesion = sesion;
+    idTokenGoogle = credencialGoogle;
+    document.getElementById("btnCerrarSesion").hidden = false;
+    actualizarEstadoSesion("Sesión activa durante un máximo de 12 horas.");
+
+    let correoGoogle = sesion.correo || "cuenta autorizada";
+    estadoUsuario.textContent = "Sesión iniciada como " + correoGoogle + ".";
+
+    const panel = document.getElementById("autorizacionFotos");
+    if (sesion.perfil === "Administrador") {
+      panel.hidden = false;
+      const estadoCarpeta = document.getElementById("estadoAutorizacionFotos");
+      estadoCarpeta.textContent = "Consultando autorización de la carpeta...";
+      try {
+        const carpeta = await solicitarServidor({
+          accion: "consultarCarpetaFotos",
+          sessionToken: sessionTokenPWA
+        });
+        if (!carpeta || !carpeta.ok) {
+          throw new Error(carpeta?.error || "No se pudo consultar la autorización.");
+        }
+        estadoCarpeta.textContent = carpeta.autorizada
+          ? "Carpeta autorizada: " + carpeta.nombre
+          : "Carpeta de fotografías pendiente de autorización.";
+      } catch (error) {
+        estadoCarpeta.textContent =
+          "No se pudo consultar la autorización: " + error.message;
+      }
+    } else {
+      panel.hidden = true;
+    }
+    actualizarUbicacionBotonGoogle();
+
+    await sincronizarPendientes();
+  } catch (error) {
+    // Un fallo de OAuth/Picker no elimina una sesión PWA válida.
+    idTokenGoogle = null;
+    document.getElementById("botonGoogle").hidden = false;
+    estadoUsuario.textContent =
+      "No se pudo completar la autorización de Google: " + error.message;
+    actualizarEstadoSesion(
+      "No se pudo verificar el acceso con Google. Comprueba la conexión e inténtalo nuevamente."
+    );
+  }
+}
+  
+function inicializarGoogleIdentity() {
+  // Puede llamarse mientras se valida/restaura la sesión PWA.
+  if (!conexionDisponible) {
+    actualizarEstadoSesion(
+      "Sesión de Google sin verificar: no hay Internet."
+    );
+    return;
+  }
+
+  if (googleIdentityInicializado) return;
+
+  if (
+    !window.google ||
+    !google.accounts ||
+    !google.accounts.id
+  ) {
+    estadoUsuario.textContent =
+      "No se pudo cargar el servicio de inicio de sesión de Google. Se intentará nuevamente al recuperar Internet.";
+    actualizarEstadoSesion("No se pudo verificar la sesión de Google.");
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: ID_CLIENTE_OAUTH,
+    callback: async (respuesta) => {
+      autenticacionEnCurso = true;
+      try { await recibirCredencialGoogle(respuesta); }
+      finally { autenticacionEnCurso = false; }
+    },
+    auto_select: true
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById("botonGoogle"),
+    {
+      theme: "outline",
+      size: "large",
+      text: "continue_with",
+      shape: "rectangular",
+      width: 280
+    }
+  );
+
+  googleIdentityInicializado = true;
+  if (!sessionTokenPWA) {
+    actualizarEstadoSesion("Intentando recuperar la sesión de Google...");
+  }
+
+  google.accounts.id.prompt((notificacion) => {
+    if (
+      !sessionTokenPWA &&
+      (
+        notificacion.isNotDisplayed() ||
+        notificacion.isSkippedMoment()
+      )
+    ) {
+      actualizarEstadoSesion(
+        "Google no recuperó la sesión automáticamente. Puedes usar el botón para identificarte."
+      );
+    }
+  });
+}
+
+
+  // Lee la fecha original de captura de una fotografía JPEG (EXIF).
+  async function leerFechaEXIF(archivo) {
+    if (!archivo || !archivo.type || !archivo.type.includes("jpeg")) {
+      return null;
+    }
+
+    try {
+      const buffer = await archivo.arrayBuffer();
+      const datos = new DataView(buffer);
+      const longitud = datos.byteLength;
+
+      if (datos.getUint16(0) !== 0xFFD8) return null;
+
+      let posicion = 2;
+
+      while (posicion + 4 < longitud) {
+        if (datos.getUint8(posicion) !== 0xFF) break;
+
+        const marcador = datos.getUint8(posicion + 1);
+        const tamano = datos.getUint16(posicion + 2);
+
+        if (tamano < 2 || posicion + 2 + tamano > longitud) break;
+
+        if (marcador === 0xE1) {
+          const inicio = posicion + 4;
+
+          if (
+            datos.getUint8(inicio) !== 0x45 ||
+            datos.getUint8(inicio + 1) !== 0x78 ||
+            datos.getUint8(inicio + 2) !== 0x69 ||
+            datos.getUint8(inicio + 3) !== 0x66
+          ) break;
+
+          const tiff = inicio + 6;
+          const orden = datos.getUint16(tiff);
+
+          const littleEndian = orden === 0x4949;
+          if (!littleEndian && orden !== 0x4D4D) return null;
+
+          if (datos.getUint16(tiff + 2, littleEndian) !== 42) return null;
+
+          const leerIFD = (desplazamiento) => {
+            const inicioIFD = tiff + desplazamiento;
+            const cantidad = datos.getUint16(inicioIFD, littleEndian);
+            const etiquetas = {};
+
+            for (let i = 0; i < cantidad; i++) {
+              const entrada = inicioIFD + 2 + i * 12;
+              const etiqueta = datos.getUint16(entrada, littleEndian);
+              etiquetas[etiqueta] = entrada;
+            }
+
+            return etiquetas;
+          };
+
+          const desplazamientoIFD0 =
+            datos.getUint32(tiff + 4, littleEndian);
+
+          const ifd0 = leerIFD(desplazamientoIFD0);
+          const etiquetaExif = ifd0[0x8769];
+
+          if (!etiquetaExif) return null;
+
+          const desplazamientoExif =
+            datos.getUint32(etiquetaExif + 8, littleEndian);
+
+          const ifdExif = leerIFD(desplazamientoExif);
+          const etiquetaFecha = ifdExif[0x9003];
+
+          if (!etiquetaFecha) return null;
+
+          const entrada = etiquetaFecha;
+          const tipo = datos.getUint16(entrada + 2, littleEndian);
+          const cantidad = datos.getUint32(entrada + 4, littleEndian);
+
+          if (tipo !== 2 || cantidad < 19) return null;
+
+          const desplazamiento =
+            datos.getUint32(entrada + 8, littleEndian);
+
+          const inicioTexto = tiff + desplazamiento;
+
+          if (inicioTexto + cantidad > longitud) return null;
+
+          let fecha = "";
+
+          for (let i = 0; i < cantidad - 1; i++) {
+            fecha += String.fromCharCode(
+              datos.getUint8(inicioTexto + i)
+            );
+          }
+
+          return /^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/.test(fecha)
+            ? fecha
+            : null;
+        }
+
+        posicion += 2 + tamano;
+      }
+
+      return null;
+
+    } catch (error) {
+      console.warn("No se pudo leer la fecha EXIF:", error);
+      return null;
+    }
+  }
+
+  
+  function compararFechaFoto(fechaEXIF, fechaVisita) {
+    if (!fechaEXIF || !fechaVisita) {
+      return "NO VERIFICABLE";
+    }
+
+    const fechaCaptura = fechaEXIF.substring(0, 10).replace(/:/g, "-");
+
+    const fechaEcuador = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Guayaquil",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date(fechaVisita));
+
+    return fechaCaptura === fechaEcuador
+      ? "COINCIDE"
+      : "FECHA DIFERENTE";
+  }
+ 
+  
+  function abrirDB() {
+    return new Promise((resolve, reject) => {
+      const solicitud = indexedDB.open(DB_NOMBRE, DB_VERSION);
+
+      solicitud.onupgradeneeded = () => {
+        const base = solicitud.result;
+        if (!base.objectStoreNames.contains("visitas")) {
+          base.createObjectStore("visitas", { keyPath: "id" });
+        }
+      };
+      solicitud.onsuccess = () => resolve(solicitud.result);
+      solicitud.onerror = () => reject(solicitud.error);
+    });
+  }
+
+  function leerRegistrosAntiguos() {
+    try {
+      const datos = JSON.parse(localStorage.getItem(CLAVE) || "[]");
+      return Array.isArray(datos) ? datos : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function obtenerTodas() {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readonly");
+      const solicitud = tx.objectStore("visitas").getAll();
+      solicitud.onsuccess = () => resolve(solicitud.result || []);
+      solicitud.onerror = () => reject(solicitud.error);
+    });
+  }
+
+  function guardarEnDB(registro) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readwrite");
+      tx.objectStore("visitas").put(registro);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transacción cancelada"));
+    });
+  }
+  function actualizarEstadoEnDB(id, nuevoEstado) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("visitas", "readwrite");
+      const almacen = tx.objectStore("visitas");
+      const solicitud = almacen.get(id);
+
+      solicitud.onsuccess = () => {
+        const registro = solicitud.result;
+
+        if (!registro) {
+          reject(new Error("No se encontró el registro"));
+          tx.abort();
+          return;
+        }
+
+        registro.estado = nuevoEstado;
+        almacen.put(registro);
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Transacción cancelada"));
+    });
+  }
+
+  
+function convertirFotoBase64(archivo) {
+  return new Promise((resolve, reject) => {
+    if (!archivo) {
+      resolve(null);
+      return;
+    }
+
+    const lector = new FileReader();
+
+    lector.onload = () => resolve(lector.result);
+    lector.onerror = () => reject(
+      new Error("No se pudo leer la fotografía")
+    );
+
+    lector.readAsDataURL(archivo);
+  });
+}
+
+  
+
+async function reservarIdFotoDrive() {
+  if (!sessionTokenPWA) {
+    throw new Error("La sesión venció. Identifícate nuevamente.");
+  }
+
+  const resultado = await solicitarServidor({
+    accion: "reservarIdFoto",
+    sessionToken: sessionTokenPWA
+  });
+
+  if (!resultado || !resultado.ok || !resultado.idArchivo) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no pudo reservar un identificador para la fotografía."
+    );
+  }
+
+  return resultado.idArchivo;
+}
+
+async function subirFotoDrive(archivo, idArchivo) {
+  if (!archivo) return "";
+  if (!sessionTokenPWA) throw new Error("La sesión venció. Identifícate nuevamente.");
+  if (!idArchivo) {
+    throw new Error("La fotografía no tiene un identificador reservado.");
+  }
+
+  const datosBase64 = await convertirFotoBase64(archivo);
+
+  const resultado = await solicitarServidor({
+    accion: "guardarFoto",
+    sessionToken: sessionTokenPWA,
+    idArchivo: idArchivo,
+    datosBase64: datosBase64,
+    nombreOriginal: archivo.name,
+    tipoMime: archivo.type
+  });
+
+  if (!resultado || !resultado.ok ||
+      !resultado.foto || !resultado.foto.enlace) {
+    throw new Error(
+      resultado?.error ||
+      "El servidor no confirmó el guardado de la fotografía."
+    );
+  }
+
+  return resultado.foto.enlace;
+}
+
+// Acción manual y aislada: solo consulta IndexedDB y reenvía la foto con su ID.
+// No cambia el registro local, no modifica su estado y no ejecuta guardarVisita.
+const btnReintentarFoto = document.getElementById("btnReintentarFoto");
+const estadoDiagnostico = document.getElementById("estadoDiagnostico");
+
+btnReintentarFoto.addEventListener("click", async () => {
+  btnReintentarFoto.disabled = true;
+  estadoDiagnostico.textContent = "Leyendo la foto original de Novedades y su ID...";
+  try {
+    if (!db) throw new Error("La base local todavía no está preparada.");
+    if (!sessionTokenPWA) throw new Error("No se encontró la sesión PWA guardada. No se enviará nada.");
+
+    const registros = await obtenerTodas();
+    const registro = registros.find(item => item.cliente === "prueba duplicidad fotos");
+
+    if (!registro) throw new Error("No se encontró la visita de prueba.");
+    if (registro.estado !== "Sincronizada") {
+      throw new Error("La visita no está en estado Sincronizada. Se cancela la prueba.");
+    }
+    if (!(registro.fotoNovedades instanceof Blob)) {
+      throw new Error("No se encontró el archivo Blob original de Novedades.");
+    }
+    if (!registro.idDriveFotoNovedades || !registro.enlaceFotoNovedades) {
+      throw new Error("Falta el ID o el enlace original de Novedades en Drive. Se cancela la prueba.");
+    }
+
+    estadoDiagnostico.textContent = "Enviando únicamente la foto de Novedades con el mismo ID de Drive...";
+    const enlaceDevuelto = await subirFotoDrive(
+      registro.fotoNovedades,
+      registro.idDriveFotoNovedades
+    );
+
+    const mismoEnlace = enlaceDevuelto === registro.enlaceFotoNovedades;
+    estadoDiagnostico.textContent = mismoEnlace
+      ? "RESPUESTA CORRECTA: el servidor devolvió el mismo enlace para el mismo ID de Novedades."
+      : "ATENCIÓN: el servidor devolvió un enlace distinto. No se modificó el registro local.";
+
+    console.log("Diagnóstico de reintento de foto Novedades", {
+      cliente: registro.cliente,
+      estadoLocalSinModificar: registro.estado,
+      idDriveUtilizado: registro.idDriveFotoNovedades,
+      mismoEnlace,
+      enlaceOriginal: registro.enlaceFotoNovedades,
+      enlaceDevuelto
+    });
+  } catch (error) {
+    estadoDiagnostico.textContent = "Prueba no completada: " + error.message;
+    console.error("Diagnóstico de reintento de foto Novedades:", error);
+  } finally {
+    btnReintentarFoto.disabled = false;
+  }
+});
+
+async function sincronizarPendientes() {
+  // En esta copia aislada se bloquea toda sincronización automática de visitas.
+  if (MODO_DIAGNOSTICO) return;
+  if (!sessionTokenPWA) {
+    const pendientes = await actualizarAvisoPendientes();
+    estado.textContent = pendientes
+      ? `Visita(s) guardada(s) localmente: ${pendientes} pendiente(s). Inicia sesión con Google para sincronizar cuando tengas Internet.`
+      : "Visita guardada localmente. Inicia sesión con Google para sincronizar cuando tengas Internet.";
+    return;
+  }
+
+  if (sincronizacionEnCurso) return;
+  sincronizacionEnCurso = true;
+
+  try {
+    if (!conexionDisponible) return;
+
+    const registros = await obtenerTodas();
+
+    const pendientes = registros.filter(
+      registro => registro.estado === "Pendiente de sincronización"
+    );
+
+    for (let registro of pendientes) {
+      try {
+        const fotoMantenimiento =
+          registro.fotoMantenimiento || registro.foto || null;
+
+        if (fotoMantenimiento && !registro.enlaceFotoMantenimiento) {
+          // Reservar y persistir el ID antes de iniciar la carga.
+          // Si Drive guarda la foto pero se pierde la respuesta, el reintento
+          // reutiliza este mismo ID y no crea una segunda copia.
+          if (!registro.idDriveFotoMantenimiento) {
+            registro.idDriveFotoMantenimiento = await reservarIdFotoDrive();
+            await guardarEnDB(registro);
+          }
+
+          const enlace = await subirFotoDrive(
+            fotoMantenimiento,
+            registro.idDriveFotoMantenimiento
+          );
+          registro.enlaceFotoMantenimiento = enlace;
+          await guardarEnDB(registro);
+        }
+
+        if (registro.fotoNovedades && !registro.enlaceFotoNovedades) {
+          if (!registro.idDriveFotoNovedades) {
+            registro.idDriveFotoNovedades = await reservarIdFotoDrive();
+            await guardarEnDB(registro);
+          }
+
+          const enlace = await subirFotoDrive(
+            registro.fotoNovedades,
+            registro.idDriveFotoNovedades
+          );
+          registro.enlaceFotoNovedades = enlace;
+          await guardarEnDB(registro);
+        }
+
+        const resultado = await solicitarServidor({
+          accion: "guardarVisita",
+          sessionToken: sessionTokenPWA,
+          visita: {
+            id: registro.id,
+            fecha: registro.fecha,
+            cliente: registro.cliente,
+            operador: registro.operador,
+            tipo: registro.tipo,
+            aspirada: registro.aspirada,
+            cepillada: registro.cepillada,
+            limpiezaBordes: registro.limpiezaBordes,
+            cloro: registro.cloro,
+            pastilla: registro.pastilla,
+            floculante: registro.floculante,
+            sal: registro.sal,
+            limpiezaFiltro: registro.limpiezaFiltro,
+            limpiezaCuba: registro.limpiezaCuba,
+            limpiezaImpulsor: registro.limpiezaImpulsor,
+            bombaMantenimiento: registro.bombaMantenimiento,
+            observaciones: registro.novedades,
+            fotoMantenimiento: registro.enlaceFotoMantenimiento || "",
+            fotoNovedades: registro.enlaceFotoNovedades || "",
+            correo: registro.correo || "",
+            fechaEXIFMantenimiento:
+              registro.fechaEXIFMantenimiento || "",
+            comparacionFechaFoto:
+              registro.comparacionFechaFoto || "NO VERIFICABLE"
+          }
+        });
+
+        if (!resultado || !resultado.ok || !resultado.guardado) {
+          throw new Error(
+            resultado?.error ||
+            "El servidor no confirmó el registro."
+          );
+        }
+
+        await actualizarEstadoEnDB(
+          registro.id,
+          "Sincronizada"
+        );
+
+      } catch (error) {
+        console.error(
+          "No se pudo sincronizar la visita " + registro.id,
+          error
+        );
+
+        const mensajeError = String(error && error.message ? error.message : error);
+        if (/La sesión (no está disponible|venció|no es válida)|La cuenta ya no está autorizada/i.test(mensajeError)) {
+          sessionTokenPWA = "";
+          localStorage.removeItem(CLAVE_SESION_PWA);
+          perfilSesion = null;
+          document.getElementById("btnCerrarSesion").hidden = true;
+          document.getElementById("autorizacionFotos").hidden = true;
+          document.getElementById("botonGoogle").hidden = false;
+          actualizarEstadoSesion("La sesión venció o fue revocada. Identifícate con Google para continuar.");
+          estadoUsuario.textContent = mensajeError;
+          inicializarGoogleIdentity();
+          await actualizarAvisoPendientes();
+          break;
+        } else {
+          // Informar al operador sin retirar ni alterar la visita pendiente.
+          estado.textContent =
+            "No se pudo sincronizar una visita. Sigue guardada en este dispositivo y pendiente de envío. " +
+            "La aplicación volverá a intentarlo cuando pueda comunicarse con el servidor.";
+        }
+      }
+    }
+
+    await mostrarRegistros();
+
+  } finally {
+    sincronizacionEnCurso = false;
+  }
+}
+  
+  async function migrarRegistrosAntiguos() {
+    const antiguos = leerRegistrosAntiguos();
+    if (!antiguos.length) return 0;
+
+    const actuales = await obtenerTodas();
+    const ids = new Set(actuales.map(registro => registro.id));
+    let migrados = 0;
+
+    for (const registro of antiguos) {
+      if (!registro || !registro.id || ids.has(registro.id)) continue;
+      await guardarEnDB(registro);
+      ids.add(registro.id);
+      migrados++;
+    }
+    return migrados;
+  }
+  window.addEventListener("load", () => {
+    if (db && !sessionTokenPWA) inicializarGoogleIdentity();
+  });
+  window.addEventListener("offline", async () => {
+    conexionDisponible = false;
+    actualizarEstadoConexion();
+    if (db) await actualizarAvisoPendientes();
+    iniciarComprobacionConexion();
+  });
+  
+  
+async function mostrarRegistros() {
+  lista.replaceChildren();
+
+  const registros = (await obtenerTodas()).sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  );
+
+  if (registros.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "Todavía no hay visitas guardadas.";
+    lista.appendChild(li);
+    return;
+  }
+
+  registros.forEach(registro => {
+    const li = document.createElement("li");
+    const fecha = new Date(registro.fecha).toLocaleString("es-EC");
+
+    const tieneFotoMantenimiento =
+      registro.fotoMantenimiento instanceof Blob ||
+      registro.foto instanceof Blob;
+
+    const tieneFotoNovedades =
+      registro.fotoNovedades instanceof Blob;
+
+    const estadoFoto = registro.comparacionFechaFoto
+      ? ` — Fecha foto: ${registro.comparacionFechaFoto}`
+      : "";
+
+    li.textContent =
+      `${registro.cliente} — ${registro.tipo} — ${fecha} — ` +
+      `${registro.estado}` +
+      `${tieneFotoMantenimiento ? " — Foto mantenimiento guardada" : ""}` +
+      `${tieneFotoNovedades ? " — Foto novedades guardada" : ""}` +
+      estadoFoto;
+
+    lista.appendChild(li);
+  });
+}
+
+  function mostrarError(campo, mensaje) {
+    const error = document.getElementById("error-" + campo.id);
+    if (!error) return;
+    error.textContent = mensaje;
+    error.classList.toggle("visible", mensaje !== "");
+    campo.setAttribute("aria-invalid", mensaje ? "true" : "false");
+  }
+
+  function validarCantidad(campo) {
+    const valor = campo.value.trim();
+
+    if (valor === "") {
+      mostrarError(campo, "");
+      return true;
+    }
+
+    if (!/^\d+(,\d+)?$/.test(valor)) {
+      mostrarError(
+        campo,
+        "Usa coma para los decimales. Ejemplo: 1,5. No uses punto."
+      );
+      return false;
+    }
+
+    mostrarError(campo, "");
+    return true;
+  }
+
+  camposCantidad.forEach(campo => {
+    campo.addEventListener("input", () => {
+      if (campo.value.includes(".")) {
+        campo.value = campo.value.replace(/\./g, "");
+        mostrarError(
+          campo,
+          "No se permite el punto decimal. Usa coma, por ejemplo: 1,5."
+        );
+      } else {
+        validarCantidad(campo);
+      }
+    });
+
+    campo.addEventListener("blur", () => validarCantidad(campo));
+  });
+
+  formulario.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    let cantidadesValidas = true;
+    camposCantidad.forEach(campo => {
+      if (!validarCantidad(campo)) cantidadesValidas = false;
+    });
+
+    if (!cantidadesValidas) {
+      estado.textContent = "Revisa las cantidades marcadas antes de guardar.";
+      return;
+    }
+
+    const fotoMantenimiento =
+      document.getElementById("fotoMantenimiento").files[0] || null;
+
+    const fotoNovedades =
+      document.getElementById("fotoNovedades").files[0] || null;
+    
+    const fechaVisita = new Date().toISOString();
+       
+    const registro = {
+      id: (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
+      fecha: fechaVisita,
+      cliente: document.getElementById("cliente").value.trim(),
+      operador: document.getElementById("operador").value.trim(),
+      tipo: document.getElementById("tipo").value,
+      aspirada: document.getElementById("aspirada").checked ? "Sí" : "",
+      cepillada: document.getElementById("cepillada").checked ? "Sí" : "",
+      limpiezaBordes: document.getElementById("limpiezaBordes").checked ? "Sí" : "",
+      limpiezaFiltro: document.getElementById("limpiezaFiltro").checked ? "Sí" : "",
+      limpiezaCuba: document.getElementById("limpiezaCuba").checked ? "Sí" : "",
+      limpiezaImpulsor: document.getElementById("limpiezaImpulsor").checked ? "Sí" : "",
+      bombaMantenimiento: document.getElementById("bombaMantenimiento").checked ? "Sí" : "",
+      cloro: document.getElementById("cloro").value.trim(),
+      pastilla: document.getElementById("pastilla").value.trim(),
+      floculante: document.getElementById("floculante").value.trim(),
+      sal: document.getElementById("sal").value.trim(),
+      novedades: document.getElementById("novedades").value.trim(),
+      estado: "Pendiente de sincronización",
+      fotoMantenimiento: fotoMantenimiento,
+      fotoNovedades: fotoNovedades,
+      fechaEXIFMantenimiento: null,
+      comparacionFechaFoto: "NO VERIFICABLE"
+    };
+
+    let guardadoLocal = false;
+
+    try {
+      // La primera escritura es la confirmación principal del guardado local.
+      await guardarEnDB(registro);
+      guardadoLocal = true;
+
+      let avisoMetadatos = "";
+
+      // Los datos EXIF son complementarios: un fallo al leerlos no invalida
+      // la visita que ya quedó guardada en IndexedDB.
+      try {
+        registro.fechaEXIFMantenimiento = fotoMantenimiento
+          ? await leerFechaEXIF(fotoMantenimiento)
+          : null;
+
+        registro.comparacionFechaFoto = compararFechaFoto(
+          registro.fechaEXIFMantenimiento,
+          fechaVisita
+        );
+      } catch (error) {
+        registro.fechaEXIFMantenimiento = null;
+        registro.comparacionFechaFoto = "NO VERIFICABLE";
+        avisoMetadatos =
+          " No se pudieron leer los datos de fecha de la fotografía.";
+        console.warn("No se pudieron procesar los datos EXIF:", error);
+      }
+
+      // Si esta segunda escritura falla, se conserva la primera versión
+      // guardada y la visita sigue pendiente de sincronización.
+      try {
+        await guardarEnDB(registro);
+      } catch (error) {
+        avisoMetadatos =
+          " La visita quedó guardada, pero no se pudieron actualizar los datos EXIF.";
+        console.warn("No se pudieron guardar los datos EXIF en IndexedDB:", error);
+      }
+
+      const mensajeServidor =
+        "Pendiente de sincronización con el servidor.";
+
+      estado.textContent =
+        "Visita guardada en este navegador. " +
+        mensajeServidor +
+        avisoMetadatos;
+
+      // Iniciar la sincronización sin detener el formulario.
+      sincronizarPendientes().catch(error => {
+        console.error("Error en la sincronización:", error);
+      });
+
+      formulario.reset();
+      limpiarParametrosVisita();
+      camposCantidad.forEach(campo => mostrarError(campo, ""));
+      await mostrarRegistros();
+
+    } catch (error) {
+      console.error("Error después del intento de guardado local:", error);
+
+      if (guardadoLocal) {
+        // No informar que falló el guardado: la primera escritura sí terminó.
+        estado.textContent =
+          "La visita sí quedó guardada en este navegador y permanece pendiente de sincronización. " +
+          "No la registres nuevamente. Hubo un problema al actualizar la pantalla o los datos complementarios.";
+
+        formulario.reset();
+        limpiarParametrosVisita();
+        camposCantidad.forEach(campo => mostrarError(campo, ""));
+
+        try {
+          await mostrarRegistros();
+        } catch (errorListado) {
+          console.warn("No se pudo actualizar el listado local:", errorListado);
+        }
+      } else {
+        estado.textContent =
+          "No se pudo confirmar el guardado local. Comprueba el espacio disponible del navegador antes de volver a intentarlo.";
+      }
+    }
+  });
+
+  document.getElementById("exportar").addEventListener("click", async () => {
+    try {
+      const registros = await obtenerTodas();
+     const salida = registros.map(registro => {
+  const copia = { ...registro };
+
+  ["fotoMantenimiento", "fotoNovedades", "foto"].forEach(campo => {
+    const foto = copia[campo];
+
+    if (foto instanceof Blob) {
+      copia[campo] = {
+        almacenada: true,
+        tipo: foto.type,
+        tamanoBytes: foto.size,
+        nota: "La imagen permanece en IndexedDB; este JSON no contiene sus datos binarios."
+      };
+    }
+  });
+
+  return copia;
+});
+      const archivo = new Blob(
+        [JSON.stringify(salida, null, 2)],
+        { type: "application/json;charset=utf-8" }
+      );
+      const url = URL.createObjectURL(archivo);
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = "visitas-piscinas-prueba.json";
+      enlace.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      estado.textContent =
+        "Se exportó el listado. Las fotos siguen guardadas en este navegador y no se incluyen en el JSON.";
+    } catch (error) {
+      estado.textContent = "No se pudieron exportar los registros.";
+    }
+  });
+
+  (async () => {
+    try {
+      // Solo abre y lee la base existente. No migra ni escribe registros.
+      db = await abrirDB();
+      await mostrarRegistros();
+      if (document.readyState === "loading") {
+        await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+      }
+      btnReintentarFoto.disabled = false;
+      estadoDiagnostico.textContent = sessionTokenPWA
+        ? "Listo. La sesión local está disponible; aún no se ha enviado ninguna solicitud."
+        : "No hay una sesión PWA guardada. La prueba permanecerá bloqueada.";
+      btnReintentarFoto.disabled = !sessionTokenPWA;
+    } catch (error) {
+      estadoDiagnostico.textContent = "No se pudo abrir la base local en modo lectura: " + error.message;
+      btnReintentarFoto.disabled = true;
+    }
+  })();
+})();
+</script>
+  
+<iframe
+  id="iframePuente"
+  title="Comunicación segura con Apps Script"
+  src="https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec"
+  hidden>
+</iframe>  
+<div id="contenedorPicker" hidden>
+  <iframe
+    id="iframePicker"
+    title="Autorización de carpeta de fotografías"
+    width="100%"
+    height="550"
+    frameborder="0">
+  </iframe>
+</div>
+  
+<script>
+  const URL_SERVIDOR =
+    "https://script.google.com/macros/s/AKfycbx0AiIbgePtjg7hFuYrPPonDrSjccf99ZzwpHtwNhVhBlzm8hfqCOaq7_zUG0shtGJR/exec";
+
+  // Comunicación directa con Apps Script mediante POST.
+  // El servidor valida el idToken y autoriza cada acción.
+
+  
+const iframePuente = document.getElementById("iframePuente");
+const solicitudesPendientesPuente = new Map();
+
+let contadorSolicitudesPuente = 0;
+let resolverPuenteListo = null;
+let promesaPuenteListo;
+let origenPuenteAutorizado = null;
+let ventanaPuenteAutorizada = null;
+let intervaloHandshakePuente = null;
+
+function crearPromesaPuenteListo() {
+  promesaPuenteListo = new Promise((resolve) => {
+    resolverPuenteListo = resolve;
+  });
+}
+
+crearPromesaPuenteListo();
+
+function esOrigenConfiablePuente(origen) {
+  try {
+    const host = new URL(origen).hostname;
+    return (
+      origen.startsWith("https://") &&
+      (
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith(".script.googleusercontent.com") ||
+        host.endsWith("-script.googleusercontent.com")
+      )
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function iniciarHandshakePuente() {
+  if (!iframePuente || !iframePuente.contentWindow) return;
+  if (ventanaPuenteAutorizada) return;
+  iframePuente.contentWindow.postMessage(
+    { tipo: "INICIAR_PUENTE" },
+    "*"
+  );
+}
+
+function detenerHandshakePuente() {
+  if (intervaloHandshakePuente !== null) {
+    clearInterval(intervaloHandshakePuente);
+    intervaloHandshakePuente = null;
+  }
+}
+
+if (!iframePuente) {
+  throw new Error("No se encontró el iframe de comunicación con Apps Script.");
+}
+
+window.addEventListener("message", function(event) {
+  if (!esOrigenConfiablePuente(event.origin)) return;
+  if (!event.data || typeof event.data !== "object") return;
+
+  if (event.data.tipo === "PUENTE_LISTO") {
+    if (!event.source || typeof event.source.postMessage !== "function") return;
+    ventanaPuenteAutorizada = event.source;
+    origenPuenteAutorizado = event.origin;
+    detenerHandshakePuente();
+    if (resolverPuenteListo) {
+      resolverPuenteListo();
+      resolverPuenteListo = null;
+    }
+    return;
+  }
+
+  if (event.data.tipo !== "RESPUESTA_SERVIDOR") return;
+  if (event.source !== ventanaPuenteAutorizada) return;
+  if (event.origin !== origenPuenteAutorizado) return;
+
+  const pendiente = solicitudesPendientesPuente.get(event.data.idSolicitud);
+  if (!pendiente) return;
+
+  clearTimeout(pendiente.timeout);
+  solicitudesPendientesPuente.delete(event.data.idSolicitud);
+  pendiente.resolve(event.data.resultado);
+});
+
+iframePuente.addEventListener("load", function() {
+  // Despierta solicitudes que esperaban el handshake anterior.
+  // Al continuar, comprobarán y esperarán la nueva promesa.
+  if (resolverPuenteListo) {
+    resolverPuenteListo();
+    resolverPuenteListo = null;
+  }
+
+  // Cada carga invalida la autorización anterior: Apps Script puede
+  // redirigir a un origen distinto al volver a cargar.
+  ventanaPuenteAutorizada = null;
+  origenPuenteAutorizado = null;
+  crearPromesaPuenteListo();
+
+  iniciarHandshakePuente();
+  if (intervaloHandshakePuente === null) {
+    intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
+  }
+});
+
+iniciarHandshakePuente();
+if (!ventanaPuenteAutorizada) {
+  intervaloHandshakePuente = setInterval(iniciarHandshakePuente, 1000);
+}
+
+async function solicitarServidor(solicitud) {
+  if (
+    !solicitud ||
+    !solicitud.accion ||
+    (!solicitud.idToken && !solicitud.sessionToken)
+  ) {
+    throw new Error("Falta la acción o la credencial de sesión.");
+  }
+
+  const inicioEsperaHandshake = Date.now();
+  while (!ventanaPuenteAutorizada || !origenPuenteAutorizado) {
+    const restante = 15000 - (Date.now() - inicioEsperaHandshake);
+    if (restante <= 0) {
+      throw new Error("No se pudo establecer comunicación con Apps Script.");
+    }
+
+    let timeoutHandshake;
+    try {
+      await Promise.race([
+        promesaPuenteListo,
+        new Promise((_, reject) => {
+          timeoutHandshake = setTimeout(() => reject(new Error(
+            "No se pudo establecer comunicación con Apps Script."
+          )), restante);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeoutHandshake);
+    }
+  }
+
+  const idSolicitud = "solicitud-" + Date.now() + "-" + (++contadorSolicitudesPuente);
+
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(new Error("El servidor no respondió dentro del tiempo esperado."));
+    }, 30000);
+
+    solicitudesPendientesPuente.set(idSolicitud, {
+      resolve: resolve,
+      reject: reject,
+      timeout: timeout
+    });
+
+    try {
+      ventanaPuenteAutorizada.postMessage({
+        tipo: "SOLICITUD_SERVIDOR",
+        idSolicitud: idSolicitud,
+        solicitud: solicitud
+      }, origenPuenteAutorizado);
+    } catch (error) {
+      clearTimeout(timeout);
+      solicitudesPendientesPuente.delete(idSolicitud);
+      reject(error);
+    }
+  }).then((resultado) => {
+    if (!resultado || typeof resultado !== "object") {
+      throw new Error("La respuesta del servidor está vacía o no es válida.");
+    }
+    return resultado;
+  });
+}
+
+window.addEventListener("online", () => {
+  comprobarConexionReal();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && !conexionDisponible) {
+    comprobarConexionReal();
+  }
+});
+
+window.addEventListener("pageshow", () => {
+  if (!conexionDisponible) comprobarConexionReal();
+});
+
+if (!conexionDisponible) iniciarComprobacionConexion();
+</script>
+
+</body>
+</html>
