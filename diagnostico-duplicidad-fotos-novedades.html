@@ -1195,7 +1195,7 @@ btnReintentarFoto.addEventListener("click", async () => {
     if (!sessionTokenPWA) throw new Error("No se encontró la sesión PWA guardada. No se enviará nada.");
 
     const registros = await obtenerTodas();
-    const registro = registros.find(item => item.cliente === "prueba duplicidad fotos");
+    const registro = registros.find(item => item.cliente === "prueba duplicidad fotos novedades");
 
     if (!registro) throw new Error("No se encontró la visita de prueba.");
     if (registro.estado !== "Sincronizada") {
