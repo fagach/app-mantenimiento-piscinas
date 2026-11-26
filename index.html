@@ -1188,9 +1188,14 @@ async function sincronizarPendientes() {
 
     const registros = await obtenerTodas();
 
-    const pendientes = registros.filter(
-      registro => registro.estado === "Pendiente de sincronización"
-    );
+    const pendientes = registros
+      .filter(
+        registro => registro.estado === "Pendiente de sincronización"
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+      );
 
     for (let registro of pendientes) {
       try {
