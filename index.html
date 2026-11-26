@@ -275,9 +275,9 @@
   // Recibe los mismos parámetros entry.* que genera el enlace de WhatsApp.
   const parametrosVisita = new URLSearchParams(window.location.search);
   const visitaDesdeEnlace = {
-    operador: parametrosVisita.get("entry.51684031") || "",
-    cliente: parametrosVisita.get("entry.1166786524") || "",
-    tipo: parametrosVisita.get("entry.1764256793") || ""
+    operador: parametrosVisita.get("entry.51684031") || parametrosVisita.get("o") || "",
+    cliente: parametrosVisita.get("entry.1166786524") || parametrosVisita.get("c") || "",
+    tipo: parametrosVisita.get("entry.1764256793") || parametrosVisita.get("t") || ""
   };
   const hayParametrosVisita = Object.values(visitaDesdeEnlace)
     .some(valor => valor !== "");
@@ -304,6 +304,9 @@
     urlActual.searchParams.delete("entry.51684031");
     urlActual.searchParams.delete("entry.1166786524");
     urlActual.searchParams.delete("entry.1764256793");
+    urlActual.searchParams.delete("c");
+    urlActual.searchParams.delete("o");
+    urlActual.searchParams.delete("t");
     window.history.replaceState(
       window.history.state,
       "",
